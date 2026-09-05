@@ -8,6 +8,7 @@ let ceilingLights = [];
 let currentElevators = [];
 let arrivalElevator = null;
 let guaranteedElevator = null;
+let guaranteedElevatorForFloor = null;
 let elevatorRide = null;
 let gameMode = "pc";
 let lastFootstepTime = 0;
@@ -85,6 +86,8 @@ let isRotating = false;
 let floorIndex = 0;
 let floorSeed = 1439;
 let arrivalFacing = { x: 0, z: -1 };
+let lastWorldGridX = null;
+let lastWorldGridZ = null;
 const usedElevators = new Set();
 
 function mod(n, m) {
@@ -169,6 +172,37 @@ function findGuaranteedElevator() {
     return candidates[index];
 }
 
+function findBehindPlayerElevator() {
+    // Szuka windy bezpośrednio za plaerem
+    const behindDirection = {
+        x: -Math.round(Math.sin(-currentYaw)),
+        z: -Math.round(-Math.cos(-currentYaw))
+    };
+    
+    let currentX = gridX + behindDirection.x;
+    let currentZ = gridZ + behindDirection.z;
+    
+    // Szuka do 6 bloków za graczem
+    for (let distance = 1; distance <= 6; distance++) {
+        if (
+            mod(currentX, 2) !== 0 &&
+            mod(currentZ, 2) !== 0 &&
+            getCell(currentX, currentZ) === 0 &&
+            hasOpenNeighbour(currentX, currentZ)
+        ) {
+            return {
+                x: currentX,
+                z: currentZ,
+                distance: distance
+            };
+        }
+        currentX += behindDirection.x;
+        currentZ += behindDirection.z;
+    }
+    
+    return null;
+}
+
 function isElevatorCell(x, z) {
     if (
         (x === 0 && z === 0) ||
@@ -180,7 +214,7 @@ function isElevatorCell(x, z) {
         return false;
     }
 
-    if (guaranteedElevator && guaranteedElevator.x === x && guaranteedElevator.z === z) {
+    if (guaranteedElevatorForFloor && guaranteedElevatorForFloor.x === x && guaranteedElevatorForFloor.z === z) {
         return true;
     }
     return pseudoRandom(x, z, 47) < ELEVATOR_CHANCE;
@@ -642,6 +676,14 @@ function updateWorld() {
         currentElevators.push(arrivalElevator);
     }
 
+    // Generuj winę za graczem przy spawnie
+    if (lastWorldGridX === null && lastWorldGridZ === null) {
+        const behindElevator = findBehindPlayerElevator();
+        if (behindElevator) {
+            guaranteedElevatorForFloor = behindElevator;
+        }
+    }
+
     for (let x = gridX - RENDER_RADIUS; x <= gridX + RENDER_RADIUS; x++) {
         for (let z = gridZ - RENDER_RADIUS; z <= gridZ + RENDER_RADIUS; z++) {
             const cellType = getCell(x, z);
@@ -746,6 +788,8 @@ function updateWorld() {
     wallStainInstancedMesh.instanceMatrix.needsUpdate = true;
 
     updateInteractionHint();
+    lastWorldGridX = gridX;
+    lastWorldGridZ = gridZ;
 }
 
 function beginElevatorRide(elevator) {
@@ -834,6 +878,9 @@ function updateElevatorRide(now) {
             targetZ = 0;
             targetYaw = 0;
             usedElevators.clear();
+            lastWorldGridX = null;
+            lastWorldGridZ = null;
+            guaranteedElevatorForFloor = null;
             guaranteedElevator = findGuaranteedElevator();
             audioManager.playElevatorBell();
             audioManager.playElevatorDoorSequence(false);
@@ -896,6 +943,10 @@ function animate(now) {
             camera.position.x = targetX;
             camera.position.z = targetZ;
             isMoving = false;
+            // Odśwież świat po ruchu, by zapewnić ciągłą generację
+            if (gridX !== lastWorldGridX || gridZ !== lastWorldGridZ) {
+                updateWorld();
+            }
         } else {
             const speed = 8;
             const moveX = (targetX - camera.position.x) / dist * speed * dt;
