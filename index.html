@@ -126,11 +126,14 @@
             justify-content: center;
             align-items: center;
             pointer-events: auto;
+            flex-wrap: wrap;
+            max-width: 260px;
+            margin: 8px auto 0;
         }
 
         .mobile-button {
-            width: 48px;
-            height: 42px;
+            width: 54px;
+            height: 50px;
             padding: 0;
             border: 1px solid rgba(255, 255, 255, 0.55);
             border-radius: 4px;
@@ -138,13 +141,29 @@
             color: #fff;
             font: bold 20px "Courier New", monospace;
             touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
         }
 
-        #mobile-controls .forward { width: 70px; }
+        #mobile-controls .forward { width: 76px; }
 
-        body.mobile-mode #ui-layer { bottom: 16px; }
+        body.mobile-mode #ui-layer {
+            bottom: max(10px, env(safe-area-inset-bottom));
+            min-width: 0;
+            width: min(92vw, 360px);
+            padding: 8px 10px 10px;
+        }
+        body.mobile-mode #ui-layer p { font-size: 12px; }
         body.mobile-mode #desktop-controls { display: none; }
         body.mobile-mode #mobile-controls { display: flex; }
+
+        @media (max-width: 420px) {
+            .mode-panel { padding: 20px 16px; }
+            .mode-panel h1 { font-size: 17px; }
+            body.mobile-mode #ui-layer { width: calc(100vw - 20px); }
+            .mobile-button { width: 58px; height: 52px; }
+            #mobile-controls .forward { width: 82px; }
+        }
 
         #elevator-overlay {
             color: rgba(229, 229, 202, 0.9);
@@ -686,12 +705,17 @@
             scene.background = new THREE.Color(0x090907);
             scene.fog = new THREE.FogExp2(0x090907, 0.08);
 
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 50);
+            const cameraFov = gameMode === "mobile" ? 92 : 75;
+            camera = new THREE.PerspectiveCamera(cameraFov, window.innerWidth / window.innerHeight, 0.1, 50);
             camera.position.set(0, 0, 0);
 
-            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                antialias: gameMode !== "mobile",
+                powerPreference: "high-performance"
+            });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, gameMode === "mobile" ? 1.35 : 2));
             renderer.outputEncoding = THREE.sRGBEncoding;
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -702,9 +726,9 @@
             flashlight = new THREE.SpotLight(0xfff4d2, 5.5, BLOCK_SIZE * 2.2, Math.PI / 5, 0.62, 2);
             flashlight.position.set(0, 0.02, -0.12);
             flashlight.target.position.set(0, 0.02, -2.4);
-            flashlight.castShadow = true;
-            flashlight.shadow.mapSize.width = 1024;
-            flashlight.shadow.mapSize.height = 1024;
+            flashlight.castShadow = gameMode !== "mobile";
+            flashlight.shadow.mapSize.width = gameMode === "mobile" ? 512 : 1024;
+            flashlight.shadow.mapSize.height = gameMode === "mobile" ? 512 : 1024;
             flashlight.shadow.camera.near = 0.1;
             flashlight.shadow.camera.far = BLOCK_SIZE * 2.2;
             camera.add(flashlight);
@@ -785,7 +809,8 @@
                 })
             };
 
-            for (let i = 0; i < 15; i++) {
+            const ceilingLightCount = gameMode === "mobile" ? 8 : 15;
+            for (let i = 0; i < ceilingLightCount; i++) {
                 const light = new THREE.PointLight(0xe0a94c, 1.5, 6, 2);
                 light.position.set(0, -100, 0);
                 scene.add(light);
