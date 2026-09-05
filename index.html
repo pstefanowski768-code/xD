@@ -80,6 +80,72 @@
             transition: opacity 0.5s ease;
         }
 
+        #mode-picker {
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.94);
+            color: #eee9c8;
+        }
+
+        .mode-panel {
+            width: min(420px, calc(100% - 36px));
+            padding: 26px 22px;
+            text-align: center;
+            border: 1px solid rgba(222, 217, 158, 0.36);
+            background: rgba(25, 24, 19, 0.94);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
+        }
+
+        .mode-panel h1 {
+            margin: 0 0 22px;
+            font-size: 20px;
+            font-weight: normal;
+            letter-spacing: 0.08em;
+        }
+
+        .mode-button {
+            width: 100%;
+            margin: 7px 0;
+            padding: 13px 12px;
+            border: 1px solid rgba(222, 217, 158, 0.4);
+            background: #29281f;
+            color: #eee9c8;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .mode-button:active { background: #4b4935; }
+
+        #mobile-controls {
+            display: none;
+            gap: 8px;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+        }
+
+        .mobile-button {
+            width: 48px;
+            height: 42px;
+            padding: 0;
+            border: 1px solid rgba(255, 255, 255, 0.55);
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+            font: bold 20px "Courier New", monospace;
+            touch-action: manipulation;
+        }
+
+        #mobile-controls .forward { width: 70px; }
+
+        body.mobile-mode #ui-layer { bottom: 16px; }
+        body.mobile-mode #desktop-controls { display: none; }
+        body.mobile-mode #mobile-controls { display: flex; }
+
         #elevator-overlay {
             color: rgba(229, 229, 202, 0.9);
             background: #000;
@@ -95,14 +161,30 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
+    <div id="mode-picker">
+        <div class="mode-panel">
+            <h1>WYBIERZ SPOSÓB GRY</h1>
+            <button class="mode-button" id="pc-mode">KOMPUTER — KLAWIATURA</button>
+            <button class="mode-button" id="mobile-mode">TELEFON — DOTYK</button>
+        </div>
+    </div>
     <div id="loading">Generowanie zniszczonych korytarzy...</div>
     <div id="elevator-overlay"><span id="elevator-message">PRZEJAZD</span></div>
     <canvas id="gameCanvas"></canvas>
 
     <div id="ui-layer">
         <p id="floor-label">Piętro 1</p>
-        <p>Strzałka <span class="key">↑</span> - krok naprzód</p>
-        <p>Strzałki <span class="key">←</span><span class="key">→</span> - obrót o 90°</p>
+        <div id="desktop-controls">
+            <p>Strzałka <span class="key">↑</span> - krok naprzód</p>
+            <p>Strzałki <span class="key">←</span><span class="key">→</span> - obrót o 90°</p>
+            <p><span class="key">E</span> - otwieranie windy</p>
+        </div>
+        <div id="mobile-controls">
+            <button class="mobile-button" data-action="left" aria-label="Obrót w lewo">←</button>
+            <button class="mobile-button forward" data-action="forward" aria-label="Krok naprzód">↑</button>
+            <button class="mobile-button" data-action="right" aria-label="Obrót w prawo">→</button>
+            <button class="mobile-button" data-action="elevator" aria-label="Otwórz windę">E</button>
+        </div>
         <p id="interaction-hint">Szukaj działającej windy.</p>
     </div>
 
@@ -118,6 +200,7 @@
         let arrivalElevator = null;
         let guaranteedElevator = null;
         let elevatorRide = null;
+        let gameMode = "pc";
 
         const BLOCK_SIZE = 2;
         const HALF_BLOCK = BLOCK_SIZE / 2;
@@ -125,7 +208,7 @@
         const MAX_INSTANCES = (RENDER_RADIUS * 2 + 1) * (RENDER_RADIUS * 2 + 1);
         const MAX_PUDDLES = MAX_INSTANCES;
         const MAX_WALL_STAINS = MAX_INSTANCES * 4;
-        const LIGHT_CHANCE = 0.08;
+        const LIGHT_CHANCE = 0.035;
         const ELEVATOR_CHANCE = 0.015; // Wyraźnie rzadziej niż światła.
         const DECAL_EPSILON = 0.018;
         const DIRECTIONS = [
@@ -137,34 +220,46 @@
 
         const FLOOR_THEMES = [
             {
-                name: "Wygaszone korytarze",
-                wall: 0x34322a,
-                floor: 0x26251e,
-                ceiling: 0x1f1e1a,
+                name: "Podziemia",
+                wall: 0x55544d,
+                floor: 0x46453f,
+                ceiling: 0x353530,
                 fog: 0x090907,
-                ambient: 0x11100a,
+                ambient: 0x000000,
                 light: 0xe0a94c,
-                puddle: 0x9cad95
+                puddle: 0x65706c,
+                puddles: true,
+                stains: true,
+                lamps: false,
+                glass: false
             },
             {
-                name: "Wilgotne zaplecze",
-                wall: 0x3b4327,
-                floor: 0x263020,
-                ceiling: 0x202517,
+                name: "Backrooms",
+                wall: 0x82784d,
+                floor: 0x47422e,
+                ceiling: 0x393528,
                 fog: 0x080a05,
-                ambient: 0x101508,
-                light: 0xb7be68,
-                puddle: 0x8ead98
+                ambient: 0x000000,
+                light: 0xf1d889,
+                puddle: 0x000000,
+                puddles: false,
+                stains: false,
+                lamps: true,
+                glass: false
             },
             {
-                name: "Zatęchły labirynt",
-                wall: 0x40372a,
-                floor: 0x30291f,
-                ceiling: 0x272117,
-                fog: 0x0b0906,
-                ambient: 0x171009,
-                light: 0xe0bf79,
-                puddle: 0xb0a583
+                name: "Szklane piętro",
+                wall: 0x9aa5a0,
+                floor: 0x4a5050,
+                ceiling: 0x252b2c,
+                fog: 0x101516,
+                ambient: 0x000000,
+                light: 0x9fb7b1,
+                puddle: 0x000000,
+                puddles: false,
+                stains: false,
+                lamps: false,
+                glass: true
             }
         ];
 
@@ -479,6 +574,10 @@
             indicator.position.set(0.64, 0.52, -0.95);
             group.add(indicator);
 
+            const entranceLight = new THREE.PointLight(0xe6d9a4, 0.9, BLOCK_SIZE * 2, 2);
+            entranceLight.position.set(0, 0.38, -0.98);
+            group.add(entranceLight);
+
             const elevator = {
                 x: x,
                 z: z,
@@ -488,6 +587,7 @@
                 group: group,
                 leftDoor: leftDoor,
                 rightDoor: rightDoor,
+                entranceLight: entranceLight,
                 doorAmount: startsOpen ? 1 : 0
             };
             setElevatorDoors(elevator, elevator.doorAmount);
@@ -512,9 +612,15 @@
             if (!wallMaterial) return;
 
             wallMaterial.color.setHex(theme.wall);
+            wallMaterial.transparent = theme.glass;
+            wallMaterial.opacity = theme.glass ? 0.24 : 1;
+            wallMaterial.depthWrite = !theme.glass;
+            wallMaterial.needsUpdate = true;
             floorMaterial.color.setHex(theme.floor);
             ceilMaterial.color.setHex(theme.ceiling);
             puddleMaterial.color.setHex(theme.puddle);
+            puddleInstancedMesh.visible = theme.puddles;
+            wallStainInstancedMesh.visible = theme.stains;
             scene.background.setHex(theme.fog);
             scene.fog.color.setHex(theme.fog);
             ambientLight.color.setHex(theme.ambient);
@@ -540,9 +646,11 @@
             let closest = null;
             let closestDistanceSq = Infinity;
             currentElevators.forEach(function(elevator) {
-                const x = elevator.x * BLOCK_SIZE - camera.position.x;
-                const z = elevator.z * BLOCK_SIZE - camera.position.z;
+                const x = camera.position.x - elevator.x * BLOCK_SIZE;
+                const z = camera.position.z - elevator.z * BLOCK_SIZE;
                 const distanceSq = x * x + z * z;
+                const frontDistance = x * elevator.facing.x * BLOCK_SIZE + z * elevator.facing.z * BLOCK_SIZE;
+                if (frontDistance < 0.25) return;
                 if (distanceSq < closestDistanceSq) {
                     closestDistanceSq = distanceSq;
                     closest = elevator;
@@ -584,19 +692,27 @@
             renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-            ambientLight = new THREE.AmbientLight(0x11100a, 1);
+            ambientLight = new THREE.AmbientLight(0x000000, 0);
             scene.add(ambientLight);
 
-            flashlight = new THREE.SpotLight(0xfff4d2, 3, 20, Math.PI / 5, 0.6, 2);
-            flashlight.position.set(0, 0, 0);
-            flashlight.target.position.set(0, 0, -1);
+            flashlight = new THREE.SpotLight(0xfff4d2, 5.5, BLOCK_SIZE * 2.2, Math.PI / 5, 0.62, 2);
+            flashlight.position.set(0, 0.02, -0.12);
+            flashlight.target.position.set(0, 0.02, -2.4);
+            flashlight.castShadow = true;
+            flashlight.shadow.mapSize.width = 1024;
+            flashlight.shadow.mapSize.height = 1024;
+            flashlight.shadow.camera.near = 0.1;
+            flashlight.shadow.camera.far = BLOCK_SIZE * 2.2;
             camera.add(flashlight);
             camera.add(flashlight.target);
             scene.add(camera);
 
-            const wallTex = createDirtTexture("#1a1a1a", "#0a0a0a", "#2a2a2a", false);
-            const floorTex = createDirtTexture("#111111", "#050505", "#1a1a1a", true);
+            const wallTex = createDirtTexture("#30302c", "#151513", "#4a4940", false);
+            const floorTex = createDirtTexture("#292925", "#11110f", "#44433b", true);
             const ceilTex = createDirtTexture("#0d0d0d", "#000000", "#151515", true);
             const puddleTex = createPuddleTexture();
             const wallStainTex = createWallStainTexture();
@@ -613,13 +729,14 @@
                 metalness: 0.28,
                 color: 0x9cad95
             });
-            wallStainMaterial = new THREE.MeshBasicMaterial({
+            wallStainMaterial = new THREE.MeshStandardMaterial({
                 map: wallStainTex,
                 transparent: true,
                 alphaTest: 0.05,
                 depthWrite: false,
                 color: 0xffffff,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
+                roughness: 1
             });
 
             const boxGeo = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
@@ -639,6 +756,7 @@
             [wallInstancedMesh, floorInstancedMesh, ceilInstancedMesh, puddleInstancedMesh, wallStainInstancedMesh]
                 .forEach(function(mesh) {
                     mesh.frustumCulled = false;
+                    mesh.receiveShadow = true;
                     scene.add(mesh);
                 });
 
@@ -692,6 +810,7 @@
         function updateWorld() {
             const dummy = new THREE.Object3D();
             const decalDummy = new THREE.Object3D();
+            const theme = themeForCurrentFloor();
             let wallCount = 0;
             let floorCount = 0;
             let ceilCount = 0;
@@ -731,6 +850,7 @@
 
                         faces.forEach(function(face, faceIndex) {
                             if (
+                                !theme.stains ||
                                 wallStainCount >= MAX_WALL_STAINS ||
                                 getCell(x + face.dx, z + face.dz) !== 0 ||
                                 pseudoRandom(x, z, 100 + faceIndex * 9) >= 0.32
@@ -759,6 +879,7 @@
                         ceilInstancedMesh.setMatrixAt(ceilCount++, dummy.matrix);
 
                         if (
+                            theme.puddles &&
                             puddleCount < MAX_PUDDLES &&
                             !(x === 0 && z === 0) &&
                             pseudoRandom(x, z, 11) < 0.17
@@ -777,7 +898,7 @@
                         }
 
                         if (mod(x, 2) !== 0 && mod(z, 2) !== 0) {
-                            if (pseudoRandom(x, z, 999) < LIGHT_CHANCE && lightIndex < ceilingLights.length) {
+                            if (theme.lamps && pseudoRandom(x, z, 999) < LIGHT_CHANCE && lightIndex < ceilingLights.length) {
                                 ceilingLights[lightIndex].position.set(worldX, HALF_BLOCK - 0.1, worldZ);
                                 lightIndex++;
                             }
@@ -872,7 +993,7 @@
             }
 
             if (ride.phase === "turning") {
-                const progress = easeInOut(Math.min(1, elapsed / 650));
+                const progress = easeInOut(Math.min(1, elapsed / 360));
                 currentYaw = THREE.MathUtils.lerp(ride.entryYaw, ride.targetYaw, progress);
                 camera.rotation.y = currentYaw;
                 camera.position.y = 0;
@@ -929,12 +1050,8 @@
             }
         }
 
-        window.addEventListener("keydown", function(event) {
-            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
-                event.preventDefault();
-            }
-
-            if (event.key.toLowerCase() === "e") {
+        function handleGameInput(action) {
+            if (action === "elevator") {
                 if (!elevatorRide && !isMoving && !isRotating) {
                     const elevator = getNearestElevator();
                     if (elevator && elevator.active) beginElevatorRide(elevator);
@@ -945,13 +1062,13 @@
 
             if (elevatorRide || isMoving || isRotating) return;
 
-            if (event.key === "ArrowLeft") {
+            if (action === "left") {
                 targetYaw = currentYaw + Math.PI / 2;
                 isRotating = true;
-            } else if (event.key === "ArrowRight") {
+            } else if (action === "right") {
                 targetYaw = currentYaw - Math.PI / 2;
                 isRotating = true;
-            } else if (event.key === "ArrowUp") {
+            } else if (action === "forward") {
                 const direction = directionFromYaw(currentYaw);
                 const nextGridX = gridX + direction.x;
                 const nextGridZ = gridZ + direction.z;
@@ -965,6 +1082,31 @@
                     updateWorld();
                 }
             }
+        }
+
+        window.addEventListener("keydown", function(event) {
+            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+                event.preventDefault();
+            }
+
+            if (event.key.toLowerCase() === "e") {
+                handleGameInput("elevator");
+                return;
+            }
+
+            if (event.key === "ArrowLeft") {
+                handleGameInput("left");
+            } else if (event.key === "ArrowRight") {
+                handleGameInput("right");
+            } else if (event.key === "ArrowUp") {
+                handleGameInput("forward");
+            }
+        });
+
+        document.querySelectorAll(".mobile-button").forEach(function(button) {
+            button.addEventListener("click", function() {
+                handleGameInput(button.dataset.action);
+            });
         });
 
         window.addEventListener("resize", function() {
@@ -980,8 +1122,8 @@
                 updateElevatorRide(now);
             } else {
                 if (isMoving) {
-                    camera.position.x += (targetX - camera.position.x) * 0.15;
-                    camera.position.z += (targetZ - camera.position.z) * 0.15;
+                    camera.position.x += (targetX - camera.position.x) * 0.28;
+                    camera.position.z += (targetZ - camera.position.z) * 0.28;
                     const dx = Math.abs(targetX - camera.position.x);
                     const dz = Math.abs(targetZ - camera.position.z);
                     if (dx < 0.01 && dz < 0.01) {
@@ -992,7 +1134,7 @@
                 }
 
                 if (isRotating) {
-                    currentYaw += (targetYaw - currentYaw) * 0.15;
+                    currentYaw += (targetYaw - currentYaw) * 0.28;
                     camera.rotation.y = currentYaw;
                     if (Math.abs(targetYaw - currentYaw) < 0.005) {
                         currentYaw = targetYaw;
@@ -1001,22 +1143,27 @@
                     }
                 }
 
-                // Zmniejszony, spokojniejszy head bobbing: 0.008 w spoczynku
-                // i maksymalnie 0.032 podczas kroku (wcześniej było 0.03 / 0.1).
-                if (!isMoving && !isRotating) {
-                    camera.position.y = Math.sin(now * 0.0015) * 0.008;
-                } else if (isMoving) {
-                    camera.position.y = Math.abs(Math.sin(now * 0.007)) * 0.032;
-                } else {
-                    camera.position.y = Math.sin(now * 0.0015) * 0.005;
-                }
+                camera.position.y = 0;
             }
 
             updateInteractionHint();
             renderer.render(scene, camera);
         }
 
-        window.onload = init;
+        window.onload = function() {
+            const picker = document.getElementById("mode-picker");
+            document.getElementById("pc-mode").addEventListener("click", function() {
+                gameMode = "pc";
+                picker.style.display = "none";
+                init();
+            });
+            document.getElementById("mobile-mode").addEventListener("click", function() {
+                gameMode = "mobile";
+                document.body.classList.add("mobile-mode");
+                picker.style.display = "none";
+                init();
+            });
+        };
     </script>
 </body>
 </html>
