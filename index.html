@@ -2,10 +2,399 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>Moja strona</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Infinite Dark Maze 3D</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #ui-layer {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.7);
+            text-align: center;
+            pointer-events: none;
+            user-select: none;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+        }
+
+        .key {
+            display: inline-block;
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            border-radius: 4px;
+            padding: 2px 8px;
+            margin: 0 4px;
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        #loading {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #000;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            z-index: 10;
+            transition: opacity 0.5s ease;
+        }
+    </style>
+    <!-- Using Three.js r128 via CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-    <h1>Hej!</h1>
-    <p>To jest moja strona.</p>
+    <div id="loading">Generowanie świata...</div>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="ui-layer">
+        <p>Strzałka <span class="key">↑</span> - Krok naprzód</p>
+        <p>Strzałki <span class="key">←</span> <span class="key">→</span> - Obrót o 90°</p>
+    </div>
+
+    <script>
+        // Zmienne globalne silnika
+        let scene, camera, renderer;
+        let wallInstancedMesh, floorInstancedMesh, ceilInstancedMesh;
+        let ceilingLights = [];
+        
+        // Zmienne gracza i ruchu
+        const BLOCK_SIZE = 2; // Wielkość jednego bloku/pola
+        let gridX = 0;
+        let gridZ = 0;
+        let currentYaw = 0; // W radianach
+        
+        // Stany animacji (tweening)
+        let isMoving = false;
+        let isRotating = false;
+        let targetX = 0;
+        let targetZ = 0;
+        let targetYaw = 0;
+        
+        // Zasięg renderowania (chunk radius)
+        const RENDER_RADIUS = 12; // widoczność na RENDER_RADIUS bloków w każdym kierunku
+        const MAX_INSTANCES = (RENDER_RADIUS * 2 + 1) * (RENDER_RADIUS * 2 + 1);
+
+        // Funkcje pomocnicze dla matematyki i losowości
+        function mod(n, m) { 
+            return ((n % m) + m) % m; 
+        }
+
+        function pseudoRandom(x, z) {
+            let n = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453123;
+            return n - Math.floor(n);
+        }
+
+        // Generator proceduralny nieskończonego labiryntu
+        // 0 = wolne pole, 1 = ściana
+        function getCell(x, z) {
+            if (x === 0 && z === 0) return 0; // Zawsze wolne na start
+            if (x === 0 && z === -1) return 0; // Zawsze wolne pole przed startem
+
+            let isEvX = mod(x, 2) === 0;
+            let isEvZ = mod(z, 2) === 0;
+
+            if (isEvX && isEvZ) return 1; // Filary (krzyżówki siatki parzystej)
+            if (!isEvX && !isEvZ) return 0; // Środki pomieszczeń/korytarzy
+
+            // Krawędzie między filarami - generowanie ścian z prawdopodobieństwem 40%
+            // Zapewnia to rozległy, połączony i skomplikowany labirynt bez zamkniętych stref.
+            return pseudoRandom(x, z) < 0.4 ? 1 : 0; 
+        }
+
+        function createDirtTexture(baseHex, noiseHex1, noiseHex2, isFloor = false) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            // Baza
+            ctx.fillStyle = baseHex;
+            ctx.fillRect(0, 0, 512, 512);
+
+            // Dodawanie szumu proceduralnego (zabrudzenia, zarysowania)
+            for (let i = 0; i < 30000; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? noiseHex1 : noiseHex2;
+                let x = Math.random() * 512;
+                let y = Math.random() * 512;
+                let w = Math.random() * 3;
+                let h = Math.random() * 3;
+                ctx.fillRect(x, y, w, h);
+            }
+
+            // Większe plamy i zacieki
+            for (let i = 0; i < 60; i++) {
+                ctx.fillStyle = `rgba(10, 10, 10, ${Math.random() * 0.4})`;
+                ctx.beginPath();
+                ctx.arc(
+                    Math.random() * 512, 
+                    Math.random() * 512, 
+                    Math.random() * (isFloor ? 40 : 80), 
+                    0, 
+                    Math.PI * 2
+                );
+                ctx.fill();
+            }
+            
+            // Lekka siatka kafelków dla podłogi i sufitu
+            if (isFloor) {
+                ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(0, 0, 512, 512);
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            // Zapobieganie rozmyciu, nadanie ostrego "surowego" wyglądu
+            texture.magFilter = THREE.LinearFilter; 
+            texture.minFilter = THREE.LinearMipmapLinearFilter;
+            return texture;
+        }
+
+        function init() {
+            const canvas = document.getElementById('gameCanvas');
+            
+            // Konfiguracja sceny i kamery
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020202);
+            // Gęsta czarna mgła pochłaniająca widok na krawędziach latarki
+            scene.fog = new THREE.FogExp2(0x020202, 0.08); 
+
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 50);
+            camera.position.set(0, 0, 0); // Gracz na wysokości 0 (środek bloku)
+
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            // Ambient light - ledwie widoczny mrok
+            const ambientLight = new THREE.AmbientLight(0x050505);
+            scene.add(ambientLight);
+
+            // Latarka (SpotLight) przyczepiona do kamery
+            const flashlight = new THREE.SpotLight(0xfffae6, 3, 20, Math.PI / 5, 0.6, 2);
+            flashlight.position.set(0, 0, 0);
+            flashlight.target.position.set(0, 0, -1);
+            camera.add(flashlight);
+            camera.add(flashlight.target);
+            scene.add(camera); // Dodajemy kamerę do sceny, by jej obiekty potomne działały poprawnie
+
+            // Generowanie tekstur
+            const wallTex = createDirtTexture('#1a1a1a', '#0a0a0a', '#2a2a2a', false);
+            const floorTex = createDirtTexture('#111111', '#050505', '#1a1a1a', true);
+            const ceilTex = createDirtTexture('#0d0d0d', '#000000', '#151515', true);
+
+            // Materiały
+            const wallMaterial = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9, metalness: 0.1 });
+            const floorMaterial = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 1.0 });
+            const ceilMaterial = new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 1.0 });
+
+            // Geometria (Sześciany i płaszczyzny)
+            const boxGeo = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            const planeGeo = new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE);
+
+            // Inicjalizacja InstancedMesh dla wydajnego renderowania dynamicznych chunków
+            wallInstancedMesh = new THREE.InstancedMesh(boxGeo, wallMaterial, MAX_INSTANCES);
+            
+            // Plane domyślnie jest pionowy, obracamy go do poziomu
+            planeGeo.rotateX(-Math.PI / 2); 
+            floorInstancedMesh = new THREE.InstancedMesh(planeGeo, floorMaterial, MAX_INSTANCES);
+            
+            // Sufit (odwrócony)
+            const ceilGeo = new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE);
+            ceilGeo.rotateX(Math.PI / 2);
+            ceilInstancedMesh = new THREE.InstancedMesh(ceilGeo, ceilMaterial, MAX_INSTANCES);
+
+            scene.add(wallInstancedMesh);
+            scene.add(floorInstancedMesh);
+            scene.add(ceilInstancedMesh);
+
+            // Pula rzadkich świateł na suficie
+            for (let i = 0; i < 15; i++) {
+                let pLight = new THREE.PointLight(0xffa500, 1.5, 6, 2); // Pomarańczowe, słabe światło
+                pLight.position.set(0, -100, 0); // Ukryte na start
+                scene.add(pLight);
+                ceilingLights.push(pLight);
+            }
+
+            // Pierwsze wygenerowanie chunków wokół punktu startowego
+            updateWorld();
+
+            // Ukrycie ekranu ładowania
+            setTimeout(() => {
+                document.getElementById('loading').style.opacity = '0';
+                setTimeout(() => document.getElementById('loading').style.display = 'none', 500);
+            }, 100);
+
+            // Start głównej pętli
+            requestAnimationFrame(animate);
+        }
+
+        function updateWorld() {
+            const dummy = new THREE.Object3D();
+            let wallCount = 0;
+            let floorCount = 0;
+            let ceilCount = 0;
+            let lightIndex = 0;
+
+            // Ukryj wszystkie światła
+            ceilingLights.forEach(light => light.position.y = -100);
+
+            // Przeskanuj siatkę wokół gracza
+            for (let x = gridX - RENDER_RADIUS; x <= gridX + RENDER_RADIUS; x++) {
+                for (let z = gridZ - RENDER_RADIUS; z <= gridZ + RENDER_RADIUS; z++) {
+                    
+                    let cellType = getCell(x, z);
+                    
+                    // Współrzędne w świecie 3D
+                    let worldX = x * BLOCK_SIZE;
+                    let worldZ = z * BLOCK_SIZE;
+
+                    if (cellType === 1) {
+                        // Ściana
+                        dummy.position.set(worldX, 0, worldZ);
+                        dummy.updateMatrix();
+                        wallInstancedMesh.setMatrixAt(wallCount++, dummy.matrix);
+                    } else {
+                        // Podłoga i Sufit w wolnych polach
+                        dummy.position.set(worldX, -BLOCK_SIZE/2, worldZ);
+                        dummy.updateMatrix();
+                        floorInstancedMesh.setMatrixAt(floorCount++, dummy.matrix);
+
+                        dummy.position.set(worldX, BLOCK_SIZE/2, worldZ);
+                        dummy.updateMatrix();
+                        ceilInstancedMesh.setMatrixAt(ceilCount++, dummy.matrix);
+
+                        // Losowe, rzadkie światła na suficie (Tylko w wolnych przestrzeniach - środkach)
+                        if (mod(x, 2) !== 0 && mod(z, 2) !== 0) {
+                            if (pseudoRandom(x, z + 999) < 0.08 && lightIndex < ceilingLights.length) {
+                                ceilingLights[lightIndex].position.set(worldX, BLOCK_SIZE/2 - 0.1, worldZ);
+                                lightIndex++;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Aktualizacja instancji w silniku
+            wallInstancedMesh.count = wallCount;
+            wallInstancedMesh.instanceMatrix.needsUpdate = true;
+            
+            floorInstancedMesh.count = floorCount;
+            floorInstancedMesh.instanceMatrix.needsUpdate = true;
+            
+            ceilInstancedMesh.count = ceilCount;
+            ceilInstancedMesh.instanceMatrix.needsUpdate = true;
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+            }
+
+            if (isMoving || isRotating) return; // Blokada podczas animacji
+
+            if (e.key === 'ArrowLeft') {
+                targetYaw = currentYaw + Math.PI / 2;
+                isRotating = true;
+            } 
+            else if (e.key === 'ArrowRight') {
+                targetYaw = currentYaw - Math.PI / 2;
+                isRotating = true;
+            } 
+            else if (e.key === 'ArrowUp') {
+                // Obliczanie kierunku ruchu na podstawie obecnego obrotu (Yaw)
+                // Używamy ujemnych wartości dla Z, ponieważ -Z to domyślny przód w Three.js
+                let dirX = Math.round(Math.sin(-currentYaw));
+                let dirZ = Math.round(-Math.cos(-currentYaw));
+                
+                let nextGridX = gridX + dirX;
+                let nextGridZ = gridZ + dirZ;
+
+                // Weryfikacja kolizji (czy pole to nie ściana)
+                if (getCell(nextGridX, nextGridZ) === 0) {
+                    gridX = nextGridX;
+                    gridZ = nextGridZ;
+                    targetX = gridX * BLOCK_SIZE;
+                    targetZ = gridZ * BLOCK_SIZE;
+                    isMoving = true;
+                    
+                    // Zaktualizuj teren (chunka) od razu po wejściu na nowe pole
+                    updateWorld();
+                }
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Interpolacja dla płynnego ruchu (Tweening)
+            if (isMoving) {
+                // LERP (Linear Interpolation) dla pozycji
+                camera.position.x += (targetX - camera.position.x) * 0.15;
+                camera.position.z += (targetZ - camera.position.z) * 0.15;
+
+                // Sprawdzenie, czy dotarliśmy wystarczająco blisko celu
+                let dx = Math.abs(targetX - camera.position.x);
+                let dz = Math.abs(targetZ - camera.position.z);
+                if (dx < 0.01 && dz < 0.01) {
+                    camera.position.x = targetX;
+                    camera.position.z = targetZ;
+                    isMoving = false;
+                }
+            }
+
+            // Interpolacja dla płynnego obrotu
+            if (isRotating) {
+                currentYaw += (targetYaw - currentYaw) * 0.15;
+                camera.rotation.y = currentYaw;
+
+                if (Math.abs(targetYaw - currentYaw) < 0.005) {
+                    currentYaw = targetYaw;
+                    camera.rotation.y = currentYaw;
+                    isRotating = false;
+                }
+            }
+
+            // Lekkie pływanie kamery dodające realizmu (head bobbing)
+            if (!isMoving && !isRotating) {
+                const time = Date.now() * 0.001;
+                camera.position.y = Math.sin(time * 2) * 0.03; 
+            } else if (isMoving) {
+                const time = Date.now() * 0.01;
+                camera.position.y = Math.abs(Math.sin(time)) * 0.1;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Start 
+        window.onload = init;
+    </script>
 </body>
 </html>
