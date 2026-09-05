@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Infinite Dark Maze 3D</title>
+    <title>Backrooms: Zniszczone korytarze</title>
     <style>
         body, html {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
-            background-color: #000;
+            background: #000;
             overflow: hidden;
-            font-family: 'Courier New', Courier, monospace;
+            font-family: "Courier New", Courier, monospace;
         }
 
         #gameCanvas {
@@ -23,588 +23,999 @@
 
         #ui-layer {
             position: absolute;
-            bottom: 30px;
+            bottom: 26px;
             left: 50%;
             transform: translateX(-50%);
-            color: rgba(255, 255, 255, 0.7);
+            min-width: 270px;
+            color: rgba(255, 255, 255, 0.78);
             text-align: center;
             pointer-events: none;
             user-select: none;
-            background: rgba(0, 0, 0, 0.5);
-            padding: 10px 20px;
+            background: rgba(0, 0, 0, 0.58);
+            padding: 9px 18px 11px;
             border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+            border: 1px solid rgba(190, 186, 132, 0.28);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+            text-shadow: 0 1px 2px #000;
+        }
+
+        #ui-layer p {
+            margin: 5px 0;
+            font-size: 13px;
+        }
+
+        #floor-label {
+            color: #ded99e;
+            letter-spacing: 0.04em;
+        }
+
+        #interaction-hint {
+            min-height: 1.2em;
+            color: #b9d69a;
         }
 
         .key {
             display: inline-block;
             border: 1px solid rgba(255, 255, 255, 0.7);
             border-radius: 4px;
-            padding: 2px 8px;
-            margin: 0 4px;
+            padding: 1px 7px;
+            margin: 0 3px;
             font-weight: bold;
             background: rgba(255, 255, 255, 0.1);
         }
 
-        #loading {
+        #loading, #elevator-overlay {
             position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: #000;
-            color: #fff;
+            inset: 0;
             display: flex;
             align-items: center;
             justify-content: center;
+        }
+
+        #loading {
+            background: #000;
+            color: #fff;
             font-size: 24px;
             z-index: 10;
             transition: opacity 0.5s ease;
         }
+
+        #elevator-overlay {
+            color: rgba(229, 229, 202, 0.9);
+            background: #000;
+            font-size: 18px;
+            letter-spacing: 0.1em;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 5;
+            transition: opacity 0.08s linear;
+        }
     </style>
-    <!-- Using Three.js r128 via CDN -->
+    <!-- Three.js r128 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-    <div id="loading">Generowanie świata...</div>
+    <div id="loading">Generowanie zniszczonych korytarzy...</div>
+    <div id="elevator-overlay"><span id="elevator-message">PRZEJAZD</span></div>
     <canvas id="gameCanvas"></canvas>
-    
+
     <div id="ui-layer">
-        <p>Strzałka <span class="key">↑</span> - Krok naprzód</p>
-        <p>Strzałki <span class="key">←</span> <span class="key">→</span> - Obrót o 90°</p>
+        <p id="floor-label">Piętro 1</p>
+        <p>Strzałka <span class="key">↑</span> - krok naprzód</p>
+        <p>Strzałki <span class="key">←</span><span class="key">→</span> - obrót o 90°</p>
+        <p id="interaction-hint">Szukaj działającej windy.</p>
     </div>
 
     <script>
-        // Zmienne globalne silnika
         let scene, camera, renderer;
         let wallInstancedMesh, floorInstancedMesh, ceilInstancedMesh;
-        let grimeInstancedMesh, puddleInstancedMesh;
+        let puddleInstancedMesh, wallStainInstancedMesh;
+        let wallMaterial, floorMaterial, ceilMaterial, puddleMaterial, wallStainMaterial;
+        let ambientLight, flashlight;
+        let elevatorDecorGroup, elevatorParts, elevatorMaterials;
         let ceilingLights = [];
-        let elevators = [];
-        let elevatorUsed = false;
-        let elevatorBusy = false;
-        
-        // Zmienne gracza i ruchu
-        const BLOCK_SIZE = 2; // Wielkość jednego bloku/pola
+        let currentElevators = [];
+        let arrivalElevator = null;
+        let guaranteedElevator = null;
+        let elevatorRide = null;
+
+        const BLOCK_SIZE = 2;
+        const HALF_BLOCK = BLOCK_SIZE / 2;
+        const RENDER_RADIUS = 12;
+        const MAX_INSTANCES = (RENDER_RADIUS * 2 + 1) * (RENDER_RADIUS * 2 + 1);
+        const MAX_PUDDLES = MAX_INSTANCES;
+        const MAX_WALL_STAINS = MAX_INSTANCES * 4;
+        const LIGHT_CHANCE = 0.08;
+        const ELEVATOR_CHANCE = 0.015; // Wyraźnie rzadziej niż światła.
+        const DECAL_EPSILON = 0.018;
+        const DIRECTIONS = [
+            { x: 0, z: -1 },
+            { x: 1, z: 0 },
+            { x: 0, z: 1 },
+            { x: -1, z: 0 }
+        ];
+
+        const FLOOR_THEMES = [
+            {
+                name: "Wygaszone korytarze",
+                wall: 0x34322a,
+                floor: 0x26251e,
+                ceiling: 0x1f1e1a,
+                fog: 0x090907,
+                ambient: 0x11100a,
+                light: 0xe0a94c,
+                puddle: 0x9cad95
+            },
+            {
+                name: "Wilgotne zaplecze",
+                wall: 0x3b4327,
+                floor: 0x263020,
+                ceiling: 0x202517,
+                fog: 0x080a05,
+                ambient: 0x101508,
+                light: 0xb7be68,
+                puddle: 0x8ead98
+            },
+            {
+                name: "Zatęchły labirynt",
+                wall: 0x40372a,
+                floor: 0x30291f,
+                ceiling: 0x272117,
+                fog: 0x0b0906,
+                ambient: 0x171009,
+                light: 0xe0bf79,
+                puddle: 0xb0a583
+            }
+        ];
+
         let gridX = 0;
         let gridZ = 0;
-        let currentYaw = 0; // W radianach
-        
-        // Stany animacji (tweening)
-        let isMoving = false;
-        let isRotating = false;
+        let currentYaw = 0;
         let targetX = 0;
         let targetZ = 0;
         let targetYaw = 0;
-        
-        // Zasięg renderowania (chunk radius)
-        const RENDER_RADIUS = 12; // widoczność na RENDER_RADIUS bloków w każdym kierunku
-        const MAX_INSTANCES = (RENDER_RADIUS * 2 + 1) * (RENDER_RADIUS * 2 + 1);
-        const MAX_DECOR_INSTANCES = MAX_INSTANCES * 2;
+        let isMoving = false;
+        let isRotating = false;
+        let floorIndex = 0;
+        let floorSeed = 1439;
+        let arrivalFacing = { x: 0, z: -1 };
+        const usedElevators = new Set();
 
-        // Funkcje pomocnicze dla matematyki i losowości
-        function mod(n, m) { 
-            return ((n % m) + m) % m; 
+        function mod(n, m) {
+            return ((n % m) + m) % m;
         }
 
-        function pseudoRandom(x, z) {
-            let n = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453123;
+        // Stabilny hash: ten sam fragment piętra zawsze wygląda tak samo,
+        // lecz każde piętro ma własny seed.
+        function pseudoRandom(x, z, salt) {
+            const extra = salt || 0;
+            const n = Math.sin(
+                (x + floorSeed * 0.173 + extra * 19.19) * 127.1 +
+                (z - floorSeed * 0.311 - extra * 7.73) * 311.7
+            ) * 43758.5453123;
             return n - Math.floor(n);
         }
 
-        // Generator proceduralny nieskończonego labiryntu
-        // 0 = wolne pole, 1 = ściana
-        function getCell(x, z) {
-            if (x === 0 && z === 0) return 0; // Zawsze wolne na start
-            if (x === 0 && z === -1) return 0; // Zawsze wolne pole przed startem
-
-            let isEvX = mod(x, 2) === 0;
-            let isEvZ = mod(z, 2) === 0;
-
-            if (isEvX && isEvZ) return 1; // Filary (krzyżówki siatki parzystej)
-            if (!isEvX && !isEvZ) return 0; // Środki pomieszczeń/korytarzy
-
-            // Krawędzie między filarami - generowanie ścian z prawdopodobieństwem 40%
-            // Zapewnia to rozległy, połączony i skomplikowany labirynt bez zamkniętych stref.
-            return pseudoRandom(x, z) < 0.4 ? 1 : 0; 
+        function directionFromYaw(yaw) {
+            return {
+                x: Math.round(Math.sin(-yaw)),
+                z: Math.round(-Math.cos(-yaw))
+            };
         }
 
-        function createDirtTexture(baseHex, noiseHex1, noiseHex2, isFloor = false) {
-            const canvas = document.createElement('canvas');
+        function isProtectedEntranceCell(x, z) {
+            return (x === 0 && z === 0) || (Math.abs(x) + Math.abs(z) === 1) ||
+                (x === arrivalFacing.x && z === arrivalFacing.z);
+        }
+
+        // 0 = wolne pole, 1 = ściana
+        function getCell(x, z) {
+            if (isProtectedEntranceCell(x, z)) return 0;
+
+            const isEvenX = mod(x, 2) === 0;
+            const isEvenZ = mod(z, 2) === 0;
+            if (isEvenX && isEvenZ) return 1;
+            if (!isEvenX && !isEvenZ) return 0;
+
+            return pseudoRandom(x, z, 1) < 0.4 ? 1 : 0;
+        }
+
+        function hasOpenNeighbour(x, z) {
+            return DIRECTIONS.some(function(direction) {
+                return getCell(x + direction.x, z + direction.z) === 0;
+            });
+        }
+
+        function elevatorKey(x, z) {
+            return floorIndex + ":" + x + ":" + z;
+        }
+
+        // Jedna osiągalna winda jest gwarantowana na każdym piętrze; pozostałe
+        // nadal pojawiają się rzadko i losowo.
+        function findGuaranteedElevator() {
+            const queue = [{ x: 0, z: 0, distance: 0 }];
+            const visited = new Set(["0:0"]);
+            const candidates = [];
+            let cursor = 0;
+
+            while (cursor < queue.length) {
+                const node = queue[cursor++];
+                if (node.distance > 38) continue;
+
+                if (
+                    node.distance >= 10 &&
+                    mod(node.x, 2) !== 0 &&
+                    mod(node.z, 2) !== 0 &&
+                    hasOpenNeighbour(node.x, node.z)
+                ) {
+                    candidates.push(node);
+                }
+
+                if (node.distance === 38) continue;
+                DIRECTIONS.forEach(function(direction) {
+                    const nextX = node.x + direction.x;
+                    const nextZ = node.z + direction.z;
+                    const key = nextX + ":" + nextZ;
+                    if (!visited.has(key) && getCell(nextX, nextZ) === 0) {
+                        visited.add(key);
+                        queue.push({ x: nextX, z: nextZ, distance: node.distance + 1 });
+                    }
+                });
+            }
+
+            if (!candidates.length) return null;
+            const index = Math.floor(pseudoRandom(floorIndex, candidates.length, 91) * candidates.length);
+            return candidates[index];
+        }
+
+        function isElevatorCell(x, z) {
+            if (
+                (x === 0 && z === 0) ||
+                getCell(x, z) !== 0 ||
+                mod(x, 2) === 0 ||
+                mod(z, 2) === 0 ||
+                !hasOpenNeighbour(x, z)
+            ) {
+                return false;
+            }
+
+            if (guaranteedElevator && guaranteedElevator.x === x && guaranteedElevator.z === z) {
+                return true;
+            }
+            return pseudoRandom(x, z, 47) < ELEVATOR_CHANCE;
+        }
+
+        function getElevatorFacing(x, z) {
+            const offset = Math.floor(pseudoRandom(x, z, 55) * DIRECTIONS.length);
+            for (let i = 0; i < DIRECTIONS.length; i++) {
+                const direction = DIRECTIONS[(offset + i) % DIRECTIONS.length];
+                if (getCell(x + direction.x, z + direction.z) === 0) return direction;
+            }
+            return { x: 0, z: -1 };
+        }
+
+        function makeOrganicBlob(ctx, x, y, radiusX, radiusY, color, points) {
+            const pointCount = points || 16;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            for (let point = 0; point < pointCount; point++) {
+                const angle = point / pointCount * Math.PI * 2;
+                const wobble = 0.65 + Math.random() * 0.55;
+                const px = x + Math.cos(angle) * radiusX * wobble;
+                const py = y + Math.sin(angle) * radiusY * wobble;
+                if (point === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function createDirtTexture(baseHex, noiseHex1, noiseHex2, isFloor) {
+            const canvas = document.createElement("canvas");
             canvas.width = 512;
             canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-
-            // Baza
+            const ctx = canvas.getContext("2d");
             ctx.fillStyle = baseHex;
             ctx.fillRect(0, 0, 512, 512);
 
-            // Dodawanie szumu proceduralnego (zabrudzenia, zarysowania)
             for (let i = 0; i < 30000; i++) {
                 ctx.fillStyle = Math.random() > 0.5 ? noiseHex1 : noiseHex2;
-                let x = Math.random() * 512;
-                let y = Math.random() * 512;
-                let w = Math.random() * 3;
-                let h = Math.random() * 3;
-                ctx.fillRect(x, y, w, h);
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                ctx.fillRect(x, y, Math.random() * 3, Math.random() * 3);
             }
 
-            // Większe plamy i zacieki
             for (let i = 0; i < 60; i++) {
-                ctx.fillStyle = `rgba(10, 10, 10, ${Math.random() * 0.4})`;
+                ctx.fillStyle = "rgba(10, 10, 10, " + (Math.random() * 0.4) + ")";
                 ctx.beginPath();
                 ctx.arc(
-                    Math.random() * 512, 
-                    Math.random() * 512, 
-                    Math.random() * (isFloor ? 40 : 80), 
-                    0, 
+                    Math.random() * 512,
+                    Math.random() * 512,
+                    Math.random() * (isFloor ? 40 : 80),
+                    0,
                     Math.PI * 2
                 );
                 ctx.fill();
             }
-            
-            // Lekka siatka kafelków dla podłogi i sufitu
+
             if (isFloor) {
-                ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+                ctx.strokeStyle = "rgba(0, 0, 0, 0.75)";
                 ctx.lineWidth = 4;
                 ctx.strokeRect(0, 0, 512, 512);
             }
 
             const texture = new THREE.CanvasTexture(canvas);
-            // Zapobieganie rozmyciu, nadanie ostrego "surowego" wyglądu
-            texture.magFilter = THREE.LinearFilter; 
+            texture.magFilter = THREE.LinearFilter;
             texture.minFilter = THREE.LinearMipmapLinearFilter;
             return texture;
         }
 
-
-        // --- Dekoracje: kałuże, zabrudzenia i zacieki ---
-        function createGrimeTexture() {
-            const c = document.createElement('canvas');
-            c.width = c.height = 256;
-            const ctx = c.getContext('2d');
-            ctx.clearRect(0, 0, 256, 256);
-            for (let i = 0; i < 900; i++) {
-                const x = Math.random() * 256, y = Math.random() * 256;
-                const r = 1 + Math.random() * 12;
-                ctx.fillStyle = `rgba(${10 + Math.random()*20}, ${35 + Math.random()*35}, ${15 + Math.random()*25}, ${0.08 + Math.random()*0.20})`;
-                ctx.beginPath();
-                ctx.arc(x, y, r, 0, Math.PI * 2);
-                ctx.fill();
-            }
-            return new THREE.CanvasTexture(c);
-        }
-
         function createPuddleTexture() {
-            const c = document.createElement('canvas');
-            c.width = c.height = 256;
-            const ctx = c.getContext('2d');
-            ctx.clearRect(0, 0, 256, 256);
-            for (let i = 0; i < 18; i++) {
-                ctx.fillStyle = `rgba(${10 + Math.random()*15}, ${18 + Math.random()*20}, ${18 + Math.random()*20}, ${0.15 + Math.random()*0.22})`;
-                ctx.beginPath();
-                ctx.ellipse(128 + (Math.random()-0.5)*70, 128 + (Math.random()-0.5)*70,
-                    18 + Math.random()*65, 8 + Math.random()*28, Math.random()*Math.PI, 0, Math.PI*2);
-                ctx.fill();
+            const canvas = document.createElement("canvas");
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext("2d");
+
+            for (let layer = 0; layer < 9; layer++) {
+                const size = 104 - layer * 8;
+                const alpha = 0.08 + layer * 0.025;
+                makeOrganicBlob(
+                    ctx,
+                    128 + (Math.random() - 0.5) * 15,
+                    128 + (Math.random() - 0.5) * 15,
+                    size,
+                    size * (0.55 + Math.random() * 0.22),
+                    "rgba(24, 43, 35, " + alpha + ")",
+                    22
+                );
             }
-            return new THREE.CanvasTexture(c);
+
+            ctx.strokeStyle = "rgba(151, 168, 126, 0.16)";
+            ctx.lineWidth = 2;
+            for (let line = 0; line < 3; line++) {
+                ctx.beginPath();
+                ctx.ellipse(128, 128, 50 + line * 14, 24 + line * 7, Math.random(), 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.magFilter = THREE.LinearFilter;
+            texture.minFilter = THREE.LinearMipmapLinearFilter;
+            return texture;
         }
 
-        function addSurfaceDecorations() {
-            const grimeGeo = new THREE.PlaneGeometry(BLOCK_SIZE * 0.9, BLOCK_SIZE * 0.9);
-            grimeGeo.rotateX(-Math.PI / 2);
-            const grimeMat = new THREE.MeshStandardMaterial({
-                map: createGrimeTexture(), transparent: true, depthWrite: false,
-                roughness: 1, side: THREE.DoubleSide
-            });
-            grimeInstancedMesh = new THREE.InstancedMesh(grimeGeo, grimeMat, MAX_DECOR_INSTANCES);
+        function createWallStainTexture() {
+            const canvas = document.createElement("canvas");
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext("2d");
 
-            const puddleGeo = new THREE.PlaneGeometry(BLOCK_SIZE * 0.9, BLOCK_SIZE * 0.65);
-            puddleGeo.rotateX(-Math.PI / 2);
-            const puddleMat = new THREE.MeshStandardMaterial({
-                map: createPuddleTexture(), transparent: true, depthWrite: false,
-                roughness: 0.18, metalness: 0.05, side: THREE.DoubleSide
-            });
-            puddleInstancedMesh = new THREE.InstancedMesh(puddleGeo, puddleMat, MAX_DECOR_INSTANCES);
-
-            scene.add(grimeInstancedMesh);
-            scene.add(puddleInstancedMesh);
-        }
-
-        // --- Winda ---
-        function createElevatorAt(x, z) {
-            const group = new THREE.Group();
-            group.userData.gridX = x;
-            group.userData.gridZ = z;
-            group.userData.used = false;
-
-            const frameMat = new THREE.MeshStandardMaterial({ color: 0x252525, roughness: 0.85, metalness: 0.15 });
-            const doorMat = new THREE.MeshStandardMaterial({ color: 0x101010, roughness: 0.9 });
-            const lampMat = new THREE.MeshStandardMaterial({ color: 0x77735f, emissive: 0x332f20, emissiveIntensity: 0.6 });
-
-            const frame = new THREE.Mesh(new THREE.BoxGeometry(1.75, 1.9, 0.18), frameMat);
-            frame.position.set(0, -0.05, -0.88);
-            group.add(frame);
-
-            const leftDoor = new THREE.Mesh(new THREE.BoxGeometry(0.82, 1.75, 0.08), doorMat);
-            const rightDoor = leftDoor.clone();
-            leftDoor.position.set(-0.43, -0.08, -0.79);
-            rightDoor.position.set(0.43, -0.08, -0.79);
-            group.add(leftDoor, rightDoor);
-
-            const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.75, 0.08, 0.04), lampMat);
-            lamp.position.set(0, 0.83, -0.79);
-            group.add(lamp);
-
-            const button = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.28, 0.08),
-                new THREE.MeshStandardMaterial({color: 0x333333, roughness: 0.7}));
-            button.position.set(1.02, -0.15, -0.79);
-            group.add(button);
-
-            group.userData.leftDoor = leftDoor;
-            group.userData.rightDoor = rightDoor;
-            group.userData.position = new THREE.Vector3(x * BLOCK_SIZE, 0, z * BLOCK_SIZE);
-            group.position.copy(group.userData.position);
-            scene.add(group);
-            elevators.push(group);
-            return group;
-        }
-
-        function spawnElevators() {
-            elevators.forEach(e => scene.remove(e));
-            elevators = [];
-
-            // Rzadziej niż światła; tylko w wolnych komórkach.
-            for (let x = gridX - RENDER_RADIUS; x <= gridX + RENDER_RADIUS; x++) {
-                for (let z = gridZ - RENDER_RADIUS; z <= gridZ + RENDER_RADIUS; z++) {
-                    if (getCell(x, z) !== 0 || (x === 0 && z === 0)) continue;
-                    if (pseudoRandom(x + 4200, z - 7300) < 0.018) {
-                        createElevatorAt(x, z);
-                    }
+            for (let cluster = 0; cluster < 28; cluster++) {
+                const x = 42 + Math.random() * 172;
+                const y = 28 + Math.random() * 175;
+                const size = 8 + Math.random() * 33;
+                makeOrganicBlob(
+                    ctx,
+                    x,
+                    y,
+                    size,
+                    size * (0.45 + Math.random() * 0.55),
+                    "rgba(18, " + Math.floor(49 + Math.random() * 28) + ", 25, " + (0.11 + Math.random() * 0.22) + ")",
+                    13
+                );
+                if (Math.random() < 0.42) {
+                    ctx.fillStyle = "rgba(18, 56, 27, 0.24)";
+                    ctx.fillRect(x - 1, y, 2 + Math.random() * 3, 16 + Math.random() * 48);
                 }
             }
-        }
 
-        function nearestElevator() {
-            let best = null, bestDist = Infinity;
-            for (const e of elevators) {
-                if (e.userData.used) continue;
-                const dx = gridX - e.userData.gridX, dz = gridZ - e.userData.gridZ;
-                const d = Math.abs(dx) + Math.abs(dz);
-                if (d < bestDist) { best = e; bestDist = d; }
+            for (let speck = 0; speck < 85; speck++) {
+                ctx.fillStyle = "rgba(24, 71, 32, " + (0.08 + Math.random() * 0.25) + ")";
+                ctx.beginPath();
+                ctx.arc(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 4, 0, Math.PI * 2);
+                ctx.fill();
             }
-            return bestDist <= 1 ? best : null;
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.magFilter = THREE.LinearFilter;
+            texture.minFilter = THREE.LinearMipmapLinearFilter;
+            return texture;
         }
 
-        async function useElevator(e) {
-            if (!e || elevatorBusy || e.userData.used || isMoving || isRotating) return;
-            elevatorBusy = true;
-            e.userData.used = true;
-            elevatorUsed = true;
+        function setElevatorDoors(elevator, amount) {
+            if (!elevator) return;
+            const open = Math.max(0, Math.min(1, amount));
+            elevator.doorAmount = open;
+            elevator.leftDoor.position.x = THREE.MathUtils.lerp(-0.4, -1.08, open);
+            elevator.rightDoor.position.x = THREE.MathUtils.lerp(0.4, 1.08, open);
+        }
 
-            const left = e.userData.leftDoor;
-            const right = e.userData.rightDoor;
+        function facingToRotation(facing) {
+            return Math.atan2(-facing.x, -facing.z);
+        }
 
-            // Otwórz drzwi.
-            left.position.x = -0.82;
-            right.position.x = 0.82;
-            await new Promise(r => setTimeout(r, 450));
+        function createElevator(x, z, facing, active, startsOpen, isArrival) {
+            const group = new THREE.Group();
+            group.position.set(x * BLOCK_SIZE, 0, z * BLOCK_SIZE);
+            group.rotation.y = facingToRotation(facing);
 
-            // Automatycznie wejdź do windy.
-            const ex = e.userData.gridX, ez = e.userData.gridZ;
-            gridX = ex; gridZ = ez;
-            targetX = ex * BLOCK_SIZE;
-            targetZ = ez * BLOCK_SIZE;
-            isMoving = true;
-            while (isMoving) await new Promise(r => setTimeout(r, 20));
+            const shellMaterial = active ? elevatorMaterials.activeShell : elevatorMaterials.inactiveShell;
+            const doorMaterial = active ? elevatorMaterials.activeDoor : elevatorMaterials.inactiveDoor;
+            const indicatorMaterial = active ? elevatorMaterials.activeIndicator : elevatorMaterials.inactiveIndicator;
 
-            // Obrót o 180°.
-            targetYaw = currentYaw + Math.PI;
-            isRotating = true;
-            while (isRotating) await new Promise(r => setTimeout(r, 20));
+            const leftWall = new THREE.Mesh(elevatorParts.side, shellMaterial);
+            leftWall.position.set(-0.86, -0.05, 0);
+            group.add(leftWall);
 
-            // Zamknij drzwi i "przejazd".
-            left.position.x = -0.43;
-            right.position.x = 0.43;
-            await new Promise(r => setTimeout(r, 1000));
+            const rightWall = new THREE.Mesh(elevatorParts.side, shellMaterial);
+            rightWall.position.set(0.86, -0.05, 0);
+            group.add(rightWall);
 
-            // Nowe piętro: deterministyczny offset świata, aby po przejeździe
-            // powstał inny, ale nadal proceduralny układ.
-            gridX = 10000 + Math.floor(Math.sin(Date.now()) * 5000);
-            gridZ = 10000 + Math.floor(Math.cos(Date.now()) * 5000);
-            targetX = 0;
-            targetZ = 0;
-            camera.position.x = 0;
-            camera.position.z = 0;
+            const backWall = new THREE.Mesh(elevatorParts.back, shellMaterial);
+            backWall.position.set(0, -0.05, 0.84);
+            group.add(backWall);
 
-            updateWorld();
-            spawnElevators();
+            const roof = new THREE.Mesh(elevatorParts.roof, shellMaterial);
+            roof.position.set(0, 0.93, 0);
+            group.add(roof);
 
-            await new Promise(r => setTimeout(r, 800));
+            [-0.92, 0.92].forEach(function(side) {
+                const post = new THREE.Mesh(elevatorParts.frame, elevatorMaterials.trim);
+                post.position.set(side, -0.04, -0.88);
+                group.add(post);
+            });
+            const lintel = new THREE.Mesh(elevatorParts.lintel, elevatorMaterials.trim);
+            lintel.position.set(0, 0.88, -0.88);
+            group.add(lintel);
 
-            elevatorBusy = false;
+            const leftDoor = new THREE.Mesh(elevatorParts.door, doorMaterial);
+            leftDoor.position.set(-0.4, -0.05, -0.89);
+            group.add(leftDoor);
+            const rightDoor = new THREE.Mesh(elevatorParts.door, doorMaterial);
+            rightDoor.position.set(0.4, -0.05, -0.89);
+            group.add(rightDoor);
+
+            const indicator = new THREE.Mesh(elevatorParts.indicator, indicatorMaterial);
+            indicator.position.set(0.64, 0.52, -0.95);
+            group.add(indicator);
+
+            const elevator = {
+                x: x,
+                z: z,
+                facing: facing,
+                active: active,
+                isArrival: isArrival,
+                group: group,
+                leftDoor: leftDoor,
+                rightDoor: rightDoor,
+                doorAmount: startsOpen ? 1 : 0
+            };
+            setElevatorDoors(elevator, elevator.doorAmount);
+            elevatorDecorGroup.add(group);
+            return elevator;
+        }
+
+        function clearElevators() {
+            while (elevatorDecorGroup.children.length) {
+                elevatorDecorGroup.remove(elevatorDecorGroup.children[0]);
+            }
+            currentElevators = [];
+            arrivalElevator = null;
+        }
+
+        function themeForCurrentFloor() {
+            return FLOOR_THEMES[floorIndex % FLOOR_THEMES.length];
+        }
+
+        function applyFloorTheme() {
+            const theme = themeForCurrentFloor();
+            if (!wallMaterial) return;
+
+            wallMaterial.color.setHex(theme.wall);
+            floorMaterial.color.setHex(theme.floor);
+            ceilMaterial.color.setHex(theme.ceiling);
+            puddleMaterial.color.setHex(theme.puddle);
+            scene.background.setHex(theme.fog);
+            scene.fog.color.setHex(theme.fog);
+            ambientLight.color.setHex(theme.ambient);
+            flashlight.color.setHex(0xfff4d2);
+            ceilingLights.forEach(function(light) {
+                light.color.setHex(theme.light);
+            });
+
+            const label = document.getElementById("floor-label");
+            if (label) {
+                label.textContent = "Piętro " + (floorIndex + 1) + " — " + theme.name;
+            }
+        }
+
+        function setOverlay(opacity, message) {
+            const overlay = document.getElementById("elevator-overlay");
+            const messageNode = document.getElementById("elevator-message");
+            overlay.style.opacity = String(opacity);
+            if (message) messageNode.textContent = message;
+        }
+
+        function getNearestElevator() {
+            let closest = null;
+            let closestDistanceSq = Infinity;
+            currentElevators.forEach(function(elevator) {
+                const x = elevator.x * BLOCK_SIZE - camera.position.x;
+                const z = elevator.z * BLOCK_SIZE - camera.position.z;
+                const distanceSq = x * x + z * z;
+                if (distanceSq < closestDistanceSq) {
+                    closestDistanceSq = distanceSq;
+                    closest = elevator;
+                }
+            });
+            return closest && closestDistanceSq <= Math.pow(BLOCK_SIZE * 1.4, 2) ? closest : null;
+        }
+
+        function updateInteractionHint(message) {
+            const hint = document.getElementById("interaction-hint");
+            if (!hint) return;
+            if (message) {
+                hint.textContent = message;
+                return;
+            }
+            if (elevatorRide) {
+                hint.textContent = "Winda jest w ruchu...";
+                return;
+            }
+            const elevator = getNearestElevator();
+            if (elevator) {
+                hint.textContent = elevator.active
+                    ? "Naciśnij E, aby użyć windy."
+                    : "Ta winda jest już martwa. Szukaj kolejnej.";
+            } else {
+                hint.textContent = "Szukaj działającej windy.";
+            }
         }
 
         function init() {
-            const canvas = document.getElementById('gameCanvas');
-            
-            // Konfiguracja sceny i kamery
+            const canvas = document.getElementById("gameCanvas");
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x020202);
-            // Gęsta czarna mgła pochłaniająca widok na krawędziach latarki
-            scene.fog = new THREE.FogExp2(0x020202, 0.08); 
+            scene.background = new THREE.Color(0x090907);
+            scene.fog = new THREE.FogExp2(0x090907, 0.08);
 
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 50);
-            camera.position.set(0, 0, 0); // Gracz na wysokości 0 (środek bloku)
+            camera.position.set(0, 0, 0);
 
             renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-            // Ambient light - ledwie widoczny mrok
-            const ambientLight = new THREE.AmbientLight(0x050505);
+            ambientLight = new THREE.AmbientLight(0x11100a, 1);
             scene.add(ambientLight);
 
-            // Latarka (SpotLight) przyczepiona do kamery
-            const flashlight = new THREE.SpotLight(0xfffae6, 3, 20, Math.PI / 5, 0.6, 2);
+            flashlight = new THREE.SpotLight(0xfff4d2, 3, 20, Math.PI / 5, 0.6, 2);
             flashlight.position.set(0, 0, 0);
             flashlight.target.position.set(0, 0, -1);
             camera.add(flashlight);
             camera.add(flashlight.target);
-            scene.add(camera); // Dodajemy kamerę do sceny, by jej obiekty potomne działały poprawnie
+            scene.add(camera);
 
-            // Generowanie tekstur
-            const wallTex = createDirtTexture('#1a1a1a', '#0a0a0a', '#2a2a2a', false);
-            const floorTex = createDirtTexture('#111111', '#050505', '#1a1a1a', true);
-            const ceilTex = createDirtTexture('#0d0d0d', '#000000', '#151515', true);
+            const wallTex = createDirtTexture("#1a1a1a", "#0a0a0a", "#2a2a2a", false);
+            const floorTex = createDirtTexture("#111111", "#050505", "#1a1a1a", true);
+            const ceilTex = createDirtTexture("#0d0d0d", "#000000", "#151515", true);
+            const puddleTex = createPuddleTexture();
+            const wallStainTex = createWallStainTexture();
 
-            // Materiały
-            const wallMaterial = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9, metalness: 0.1 });
-            const floorMaterial = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 1.0 });
-            const ceilMaterial = new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 1.0 });
+            wallMaterial = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9, metalness: 0.1 });
+            floorMaterial = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 1.0 });
+            ceilMaterial = new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 1.0 });
+            puddleMaterial = new THREE.MeshStandardMaterial({
+                map: puddleTex,
+                transparent: true,
+                alphaTest: 0.04,
+                depthWrite: false,
+                roughness: 0.12,
+                metalness: 0.28,
+                color: 0x9cad95
+            });
+            wallStainMaterial = new THREE.MeshBasicMaterial({
+                map: wallStainTex,
+                transparent: true,
+                alphaTest: 0.05,
+                depthWrite: false,
+                color: 0xffffff,
+                side: THREE.DoubleSide
+            });
 
-            // Geometria (Sześciany i płaszczyzny)
             const boxGeo = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-            const planeGeo = new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE);
-
-            // Inicjalizacja InstancedMesh dla wydajnego renderowania dynamicznych chunków
-            wallInstancedMesh = new THREE.InstancedMesh(boxGeo, wallMaterial, MAX_INSTANCES);
-            
-            // Plane domyślnie jest pionowy, obracamy go do poziomu
-            planeGeo.rotateX(-Math.PI / 2); 
-            floorInstancedMesh = new THREE.InstancedMesh(planeGeo, floorMaterial, MAX_INSTANCES);
-            
-            // Sufit (odwrócony)
+            const floorGeo = new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE);
+            floorGeo.rotateX(-Math.PI / 2);
             const ceilGeo = new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE);
             ceilGeo.rotateX(Math.PI / 2);
+            const puddleGeo = new THREE.PlaneGeometry(1, 1);
+            puddleGeo.rotateX(-Math.PI / 2);
+            const wallStainGeo = new THREE.PlaneGeometry(1, 1);
+
+            wallInstancedMesh = new THREE.InstancedMesh(boxGeo, wallMaterial, MAX_INSTANCES);
+            floorInstancedMesh = new THREE.InstancedMesh(floorGeo, floorMaterial, MAX_INSTANCES);
             ceilInstancedMesh = new THREE.InstancedMesh(ceilGeo, ceilMaterial, MAX_INSTANCES);
+            puddleInstancedMesh = new THREE.InstancedMesh(puddleGeo, puddleMaterial, MAX_PUDDLES);
+            wallStainInstancedMesh = new THREE.InstancedMesh(wallStainGeo, wallStainMaterial, MAX_WALL_STAINS);
+            [wallInstancedMesh, floorInstancedMesh, ceilInstancedMesh, puddleInstancedMesh, wallStainInstancedMesh]
+                .forEach(function(mesh) {
+                    mesh.frustumCulled = false;
+                    scene.add(mesh);
+                });
 
-            scene.add(wallInstancedMesh);
-            scene.add(floorInstancedMesh);
-            scene.add(ceilInstancedMesh);
+            elevatorDecorGroup = new THREE.Group();
+            scene.add(elevatorDecorGroup);
+            elevatorParts = {
+                side: new THREE.BoxGeometry(0.15, 1.84, 1.68),
+                back: new THREE.BoxGeometry(1.82, 1.84, 0.15),
+                roof: new THREE.BoxGeometry(1.86, 0.16, 1.86),
+                frame: new THREE.BoxGeometry(0.12, 1.9, 0.12),
+                lintel: new THREE.BoxGeometry(1.9, 0.13, 0.13),
+                door: new THREE.BoxGeometry(0.78, 1.72, 0.08),
+                indicator: new THREE.BoxGeometry(0.16, 0.14, 0.04)
+            };
+            elevatorMaterials = {
+                activeShell: new THREE.MeshStandardMaterial({ color: 0x22231e, roughness: 0.78, metalness: 0.24 }),
+                inactiveShell: new THREE.MeshStandardMaterial({ color: 0x181817, roughness: 0.78, metalness: 0.24 }),
+                activeDoor: new THREE.MeshStandardMaterial({ color: 0x5e6151, roughness: 0.52, metalness: 0.48 }),
+                inactiveDoor: new THREE.MeshStandardMaterial({ color: 0x343530, roughness: 0.52, metalness: 0.48 }),
+                trim: new THREE.MeshStandardMaterial({ color: 0x10110f, roughness: 0.36, metalness: 0.62 }),
+                activeIndicator: new THREE.MeshStandardMaterial({
+                    color: 0x9fbb54, emissive: 0x4d6e1a, emissiveIntensity: 1.1, roughness: 0.5
+                }),
+                inactiveIndicator: new THREE.MeshStandardMaterial({
+                    color: 0x5a1717, emissive: 0x3d0808, emissiveIntensity: 1.1, roughness: 0.5
+                })
+            };
 
-            addSurfaceDecorations();
-
-            // Pula rzadkich świateł na suficie
             for (let i = 0; i < 15; i++) {
-                let pLight = new THREE.PointLight(0xffa500, 1.5, 6, 2); // Pomarańczowe, słabe światło
-                pLight.position.set(0, -100, 0); // Ukryte na start
-                scene.add(pLight);
-                ceilingLights.push(pLight);
+                const light = new THREE.PointLight(0xe0a94c, 1.5, 6, 2);
+                light.position.set(0, -100, 0);
+                scene.add(light);
+                ceilingLights.push(light);
             }
 
-            // Pierwsze wygenerowanie chunków wokół punktu startowego
+            guaranteedElevator = findGuaranteedElevator();
+            applyFloorTheme();
             updateWorld();
 
-            // Ukrycie ekranu ładowania
-            setTimeout(() => {
-                document.getElementById('loading').style.opacity = '0';
-                setTimeout(() => document.getElementById('loading').style.display = 'none', 500);
+            setTimeout(function() {
+                const loading = document.getElementById("loading");
+                loading.style.opacity = "0";
+                setTimeout(function() {
+                    loading.style.display = "none";
+                }, 500);
             }, 100);
 
-            // Start głównej pętli
             requestAnimationFrame(animate);
         }
 
         function updateWorld() {
             const dummy = new THREE.Object3D();
+            const decalDummy = new THREE.Object3D();
             let wallCount = 0;
             let floorCount = 0;
             let ceilCount = 0;
-            let lightIndex = 0;
-            let grimeCount = 0;
             let puddleCount = 0;
+            let wallStainCount = 0;
+            let lightIndex = 0;
 
-            // Ukryj wszystkie światła
-            ceilingLights.forEach(light => light.position.y = -100);
+            ceilingLights.forEach(function(light) {
+                light.position.y = -100;
+            });
+            clearElevators();
 
-            // Przeskanuj siatkę wokół gracza
+            if (floorIndex > 0) {
+                arrivalElevator = createElevator(0, 0, arrivalFacing, false, true, true);
+                currentElevators.push(arrivalElevator);
+            }
+
             for (let x = gridX - RENDER_RADIUS; x <= gridX + RENDER_RADIUS; x++) {
                 for (let z = gridZ - RENDER_RADIUS; z <= gridZ + RENDER_RADIUS; z++) {
-                    
-                    let cellType = getCell(x, z);
-                    
-                    // Współrzędne w świecie 3D
-                    let worldX = x * BLOCK_SIZE;
-                    let worldZ = z * BLOCK_SIZE;
+                    const cellType = getCell(x, z);
+                    const worldX = x * BLOCK_SIZE;
+                    const worldZ = z * BLOCK_SIZE;
 
                     if (cellType === 1) {
-                        // Ściana
                         dummy.position.set(worldX, 0, worldZ);
+                        dummy.rotation.set(0, 0, 0);
+                        dummy.scale.set(1, 1, 1);
                         dummy.updateMatrix();
                         wallInstancedMesh.setMatrixAt(wallCount++, dummy.matrix);
+
+                        const faces = [
+                            { dx: 0, dz: 1, x: 0, z: HALF_BLOCK + DECAL_EPSILON, rotation: 0 },
+                            { dx: 0, dz: -1, x: 0, z: -HALF_BLOCK - DECAL_EPSILON, rotation: Math.PI },
+                            { dx: 1, dz: 0, x: HALF_BLOCK + DECAL_EPSILON, z: 0, rotation: Math.PI / 2 },
+                            { dx: -1, dz: 0, x: -HALF_BLOCK - DECAL_EPSILON, z: 0, rotation: -Math.PI / 2 }
+                        ];
+
+                        faces.forEach(function(face, faceIndex) {
+                            if (
+                                wallStainCount >= MAX_WALL_STAINS ||
+                                getCell(x + face.dx, z + face.dz) !== 0 ||
+                                pseudoRandom(x, z, 100 + faceIndex * 9) >= 0.32
+                            ) {
+                                return;
+                            }
+
+                            const width = 0.42 + pseudoRandom(x, z, 101 + faceIndex * 9) * 0.98;
+                            const height = 0.38 + pseudoRandom(x, z, 102 + faceIndex * 9) * 0.92;
+                            const y = -0.36 + pseudoRandom(x, z, 103 + faceIndex * 9) * 0.54;
+                            decalDummy.position.set(worldX + face.x, y, worldZ + face.z);
+                            decalDummy.rotation.set(0, face.rotation, 0);
+                            decalDummy.scale.set(width, height, 1);
+                            decalDummy.updateMatrix();
+                            wallStainInstancedMesh.setMatrixAt(wallStainCount++, decalDummy.matrix);
+                        });
                     } else {
-                        // Podłoga i Sufit w wolnych polach
-                        dummy.position.set(worldX, -BLOCK_SIZE/2, worldZ);
+                        dummy.position.set(worldX, -HALF_BLOCK, worldZ);
+                        dummy.rotation.set(0, 0, 0);
+                        dummy.scale.set(1, 1, 1);
                         dummy.updateMatrix();
                         floorInstancedMesh.setMatrixAt(floorCount++, dummy.matrix);
 
-                        dummy.position.set(worldX, BLOCK_SIZE/2, worldZ);
+                        dummy.position.set(worldX, HALF_BLOCK, worldZ);
                         dummy.updateMatrix();
                         ceilInstancedMesh.setMatrixAt(ceilCount++, dummy.matrix);
 
-                        // Losowe, rzadkie światła na suficie (Tylko w wolnych przestrzeniach - środkach)
+                        if (
+                            puddleCount < MAX_PUDDLES &&
+                            !(x === 0 && z === 0) &&
+                            pseudoRandom(x, z, 11) < 0.17
+                        ) {
+                            const scaleX = 0.45 + pseudoRandom(x, z, 12) * 0.95;
+                            const scaleZ = 0.26 + pseudoRandom(x, z, 13) * 0.62;
+                            decalDummy.position.set(
+                                worldX + (pseudoRandom(x, z, 14) - 0.5) * 0.55,
+                                -HALF_BLOCK + DECAL_EPSILON,
+                                worldZ + (pseudoRandom(x, z, 15) - 0.5) * 0.55
+                            );
+                            decalDummy.rotation.set(0, pseudoRandom(x, z, 16) * Math.PI * 2, 0);
+                            decalDummy.scale.set(scaleX, scaleZ, 1);
+                            decalDummy.updateMatrix();
+                            puddleInstancedMesh.setMatrixAt(puddleCount++, decalDummy.matrix);
+                        }
+
                         if (mod(x, 2) !== 0 && mod(z, 2) !== 0) {
-                            if (pseudoRandom(x, z + 999) < 0.08 && lightIndex < ceilingLights.length) {
-                                ceilingLights[lightIndex].position.set(worldX, BLOCK_SIZE/2 - 0.1, worldZ);
+                            if (pseudoRandom(x, z, 999) < LIGHT_CHANCE && lightIndex < ceilingLights.length) {
+                                ceilingLights[lightIndex].position.set(worldX, HALF_BLOCK - 0.1, worldZ);
                                 lightIndex++;
                             }
 
-                            // Kałuże i stare zielonkawe zabrudzenia na podłodze.
-                            if (pseudoRandom(x + 3100, z - 1700) < 0.13 && puddleCount < MAX_DECOR_INSTANCES) {
-                                dummy.position.set(
-                                    worldX + (pseudoRandom(x, z + 300) - 0.5) * 0.5,
-                                    -BLOCK_SIZE/2 + 0.012,
-                                    worldZ + (pseudoRandom(x + 20, z) - 0.5) * 0.5
+                            if (isElevatorCell(x, z)) {
+                                const key = elevatorKey(x, z);
+                                const elevator = createElevator(
+                                    x,
+                                    z,
+                                    getElevatorFacing(x, z),
+                                    !usedElevators.has(key),
+                                    false,
+                                    false
                                 );
-                                dummy.rotation.y = pseudoRandom(x + 500, z) * Math.PI;
-                                dummy.scale.set(1, 1, 0.65 + pseudoRandom(x, z + 700) * 0.8);
-                                dummy.updateMatrix();
-                                puddleInstancedMesh.setMatrixAt(puddleCount++, dummy.matrix);
-                            }
-
-                            if (pseudoRandom(x - 2200, z + 4400) < 0.18 && grimeCount < MAX_DECOR_INSTANCES) {
-                                dummy.position.set(worldX, -BLOCK_SIZE/2 + 0.02, worldZ);
-                                dummy.rotation.y = pseudoRandom(x + 800, z + 900) * Math.PI;
-                                dummy.scale.set(0.5 + pseudoRandom(x, z + 910) * 0.8, 1, 0.5 + pseudoRandom(x + 10, z + 920) * 0.8);
-                                dummy.updateMatrix();
-                                grimeInstancedMesh.setMatrixAt(grimeCount++, dummy.matrix);
+                                currentElevators.push(elevator);
                             }
                         }
                     }
                 }
             }
 
-            // Aktualizacja instancji w silniku
             wallInstancedMesh.count = wallCount;
             wallInstancedMesh.instanceMatrix.needsUpdate = true;
-            
             floorInstancedMesh.count = floorCount;
             floorInstancedMesh.instanceMatrix.needsUpdate = true;
-            
             ceilInstancedMesh.count = ceilCount;
             ceilInstancedMesh.instanceMatrix.needsUpdate = true;
-
-            grimeInstancedMesh.count = grimeCount;
-            grimeInstancedMesh.instanceMatrix.needsUpdate = true;
             puddleInstancedMesh.count = puddleCount;
             puddleInstancedMesh.instanceMatrix.needsUpdate = true;
+            wallStainInstancedMesh.count = wallStainCount;
+            wallStainInstancedMesh.instanceMatrix.needsUpdate = true;
 
-            spawnElevators();
+            updateInteractionHint();
         }
 
-        window.addEventListener('keydown', (e) => {
-            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-                e.preventDefault();
+        function beginElevatorRide(elevator) {
+            if (!elevator || !elevator.active || elevatorRide) return;
+
+            elevator.active = false;
+            usedElevators.add(elevatorKey(elevator.x, elevator.z));
+            elevatorRide = {
+                phase: "opening",
+                started: performance.now(),
+                elevator: elevator,
+                startX: camera.position.x,
+                startZ: camera.position.z,
+                entryYaw: currentYaw,
+                targetYaw: currentYaw + Math.PI
+            };
+            updateInteractionHint("Drzwi windy otwierają się...");
+        }
+
+        function nextElevatorPhase(phase) {
+            elevatorRide.phase = phase;
+            elevatorRide.started = performance.now();
+        }
+
+        function easeInOut(value) {
+            return value < 0.5
+                ? 2 * value * value
+                : 1 - Math.pow(-2 * value + 2, 2) / 2;
+        }
+
+        function updateElevatorRide(now) {
+            const ride = elevatorRide;
+            if (!ride) return;
+            const elapsed = now - ride.started;
+
+            if (ride.phase === "opening") {
+                setElevatorDoors(ride.elevator, Math.min(1, elapsed / 620));
+                if (elapsed >= 620) {
+                    nextElevatorPhase("boarding");
+                    updateInteractionHint("Wchodzisz do windy...");
+                }
+                return;
             }
 
-            if (isMoving || isRotating) return; // Blokada podczas animacji
+            if (ride.phase === "boarding") {
+                const progress = easeInOut(Math.min(1, elapsed / 850));
+                camera.position.x = THREE.MathUtils.lerp(ride.startX, ride.elevator.x * BLOCK_SIZE, progress);
+                camera.position.z = THREE.MathUtils.lerp(ride.startZ, ride.elevator.z * BLOCK_SIZE, progress);
+                camera.position.y = 0;
+                if (progress >= 1) {
+                    gridX = ride.elevator.x;
+                    gridZ = ride.elevator.z;
+                    targetX = camera.position.x;
+                    targetZ = camera.position.z;
+                    nextElevatorPhase("turning");
+                    updateInteractionHint("Odwracasz się...");
+                }
+                return;
+            }
 
-            if (e.key === 'ArrowLeft') {
+            if (ride.phase === "turning") {
+                const progress = easeInOut(Math.min(1, elapsed / 650));
+                currentYaw = THREE.MathUtils.lerp(ride.entryYaw, ride.targetYaw, progress);
+                camera.rotation.y = currentYaw;
+                camera.position.y = 0;
+                if (progress >= 1) {
+                    nextElevatorPhase("closing");
+                    updateInteractionHint("Drzwi windy zamykają się...");
+                }
+                return;
+            }
+
+            if (ride.phase === "closing") {
+                setElevatorDoors(ride.elevator, 1 - Math.min(1, elapsed / 620));
+                camera.position.y = 0;
+                if (elapsed >= 620) {
+                    setOverlay(0.78, "PRZEJAZD");
+                    nextElevatorPhase("travelling");
+                    updateInteractionHint("Winda jedzie...");
+                }
+                return;
+            }
+
+            if (ride.phase === "travelling") {
+                camera.position.y = 0;
+                if (elapsed >= 1800) {
+                    floorIndex++;
+                    floorSeed = 1439 + floorIndex * 7919;
+                    gridX = 0;
+                    gridZ = 0;
+                    targetX = 0;
+                    targetZ = 0;
+                    camera.position.set(0, 0, 0);
+                    arrivalFacing = directionFromYaw(currentYaw);
+                    guaranteedElevator = findGuaranteedElevator();
+                    applyFloorTheme();
+                    updateWorld();
+                    ride.elevator = arrivalElevator;
+                    nextElevatorPhase("arriving");
+                    setOverlay(0.68, "NOWE PIĘTRO");
+                    updateInteractionHint("Drzwi windy otwierają się...");
+                }
+                return;
+            }
+
+            if (ride.phase === "arriving") {
+                const progress = Math.min(1, elapsed / 700);
+                setElevatorDoors(ride.elevator, progress);
+                setOverlay(0.68 * (1 - progress), "NOWE PIĘTRO");
+                camera.position.y = 0;
+                if (progress >= 1) {
+                    setOverlay(0, "");
+                    elevatorRide = null;
+                    updateInteractionHint();
+                }
+            }
+        }
+
+        window.addEventListener("keydown", function(event) {
+            if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+                event.preventDefault();
+            }
+
+            if (event.key.toLowerCase() === "e") {
+                if (!elevatorRide && !isMoving && !isRotating) {
+                    const elevator = getNearestElevator();
+                    if (elevator && elevator.active) beginElevatorRide(elevator);
+                    else if (elevator) updateInteractionHint("Ta winda jest już martwa. Szukaj kolejnej.");
+                }
+                return;
+            }
+
+            if (elevatorRide || isMoving || isRotating) return;
+
+            if (event.key === "ArrowLeft") {
                 targetYaw = currentYaw + Math.PI / 2;
                 isRotating = true;
-            } 
-            else if (e.key === 'ArrowRight') {
+            } else if (event.key === "ArrowRight") {
                 targetYaw = currentYaw - Math.PI / 2;
                 isRotating = true;
-            } 
-            else if (e.key === 'ArrowUp') {
-                // Obliczanie kierunku ruchu na podstawie obecnego obrotu (Yaw)
-                // Używamy ujemnych wartości dla Z, ponieważ -Z to domyślny przód w Three.js
-                let dirX = Math.round(Math.sin(-currentYaw));
-                let dirZ = Math.round(-Math.cos(-currentYaw));
-                
-                let nextGridX = gridX + dirX;
-                let nextGridZ = gridZ + dirZ;
+            } else if (event.key === "ArrowUp") {
+                const direction = directionFromYaw(currentYaw);
+                const nextGridX = gridX + direction.x;
+                const nextGridZ = gridZ + direction.z;
 
-                // Weryfikacja kolizji (czy pole to nie ściana)
                 if (getCell(nextGridX, nextGridZ) === 0) {
                     gridX = nextGridX;
                     gridZ = nextGridZ;
                     targetX = gridX * BLOCK_SIZE;
                     targetZ = gridZ * BLOCK_SIZE;
                     isMoving = true;
-                    
-                    // Zaktualizuj teren (chunka) od razu po wejściu na nowe pole
                     updateWorld();
                 }
             }
         });
 
-        window.addEventListener('keydown', (e) => {
-            if (e.key.toLowerCase() === 'e') {
-                useElevator(nearestElevator());
-            }
-        });
-
-        window.addEventListener('resize', () => {
+        window.addEventListener("resize", function() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        function animate() {
+        function animate(now) {
             requestAnimationFrame(animate);
 
-            // Interpolacja dla płynnego ruchu (Tweening)
-            if (isMoving) {
-                // LERP (Linear Interpolation) dla pozycji
-                camera.position.x += (targetX - camera.position.x) * 0.15;
-                camera.position.z += (targetZ - camera.position.z) * 0.15;
-
-                // Sprawdzenie, czy dotarliśmy wystarczająco blisko celu
-                let dx = Math.abs(targetX - camera.position.x);
-                let dz = Math.abs(targetZ - camera.position.z);
-                if (dx < 0.01 && dz < 0.01) {
-                    camera.position.x = targetX;
-                    camera.position.z = targetZ;
-                    isMoving = false;
+            if (elevatorRide) {
+                updateElevatorRide(now);
+            } else {
+                if (isMoving) {
+                    camera.position.x += (targetX - camera.position.x) * 0.15;
+                    camera.position.z += (targetZ - camera.position.z) * 0.15;
+                    const dx = Math.abs(targetX - camera.position.x);
+                    const dz = Math.abs(targetZ - camera.position.z);
+                    if (dx < 0.01 && dz < 0.01) {
+                        camera.position.x = targetX;
+                        camera.position.z = targetZ;
+                        isMoving = false;
+                    }
                 }
-            }
 
-            // Interpolacja dla płynnego obrotu
-            if (isRotating) {
-                currentYaw += (targetYaw - currentYaw) * 0.15;
-                camera.rotation.y = currentYaw;
-
-                if (Math.abs(targetYaw - currentYaw) < 0.005) {
-                    currentYaw = targetYaw;
+                if (isRotating) {
+                    currentYaw += (targetYaw - currentYaw) * 0.15;
                     camera.rotation.y = currentYaw;
-                    isRotating = false;
+                    if (Math.abs(targetYaw - currentYaw) < 0.005) {
+                        currentYaw = targetYaw;
+                        camera.rotation.y = currentYaw;
+                        isRotating = false;
+                    }
+                }
+
+                // Zmniejszony, spokojniejszy head bobbing: 0.008 w spoczynku
+                // i maksymalnie 0.032 podczas kroku (wcześniej było 0.03 / 0.1).
+                if (!isMoving && !isRotating) {
+                    camera.position.y = Math.sin(now * 0.0015) * 0.008;
+                } else if (isMoving) {
+                    camera.position.y = Math.abs(Math.sin(now * 0.007)) * 0.032;
+                } else {
+                    camera.position.y = Math.sin(now * 0.0015) * 0.005;
                 }
             }
 
-            // Lekkie pływanie kamery dodające realizmu (head bobbing)
-            if (!isMoving && !isRotating) {
-                const time = Date.now() * 0.001;
-                camera.position.y = Math.sin(time * 2) * 0.012; 
-            } else if (isMoving) {
-                const time = Date.now() * 0.01;
-                camera.position.y = Math.abs(Math.sin(time)) * 0.035;
-            }
-
+            updateInteractionHint();
             renderer.render(scene, camera);
         }
 
-        // Start 
         window.onload = init;
     </script>
 </body>
