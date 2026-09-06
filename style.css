@@ -1,170 +1,1287 @@
-body, html {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
-    background: #000;
-    overflow: hidden;
-    font-family: "Courier New", Courier, monospace;
-}
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Backrooms: Zniszczone korytarze</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            overflow: hidden;
+            font-family: "Courier New", Courier, monospace;
+        }
 
-#gameCanvas {
-    display: block;
-    width: 100%;
-    height: 100%;
-}
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
 
-#ui-layer {
-    position: absolute;
-    bottom: 26px;
-    left: 50%;
-    transform: translateX(-50%);
-    min-width: 270px;
-    color: rgba(255, 255, 255, 0.78);
-    text-align: center;
-    pointer-events: none;
-    user-select: none;
-    background: rgba(0, 0, 0, 0.58);
-    padding: 9px 18px 11px;
-    border-radius: 8px;
-    border: 1px solid rgba(190, 186, 132, 0.28);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
-    text-shadow: 0 1px 2px #000;
-}
+        #ui-layer {
+            position: absolute;
+            bottom: 26px;
+            left: 50%;
+            transform: translateX(-50%);
+            min-width: 270px;
+            color: rgba(255, 255, 255, 0.78);
+            text-align: center;
+            pointer-events: none;
+            user-select: none;
+            background: rgba(0, 0, 0, 0.58);
+            padding: 9px 18px 11px;
+            border-radius: 8px;
+            border: 1px solid rgba(190, 186, 132, 0.28);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+            text-shadow: 0 1px 2px #000;
+        }
 
-#ui-layer p {
-    margin: 5px 0;
-    font-size: 13px;
-}
+        #ui-layer p {
+            margin: 5px 0;
+            font-size: 13px;
+        }
 
-#floor-label {
-    color: #ded99e;
-    letter-spacing: 0.04em;
-}
+        #floor-label {
+            color: #ded99e;
+            letter-spacing: 0.04em;
+        }
 
-#interaction-hint {
-    min-height: 1.2em;
-    color: #b9d69a;
-}
+        .key {
+            display: inline-block;
+            border: 1px solid rgba(255, 255, 255, 0.7);
+            border-radius: 4px;
+            padding: 1px 7px;
+            margin: 0 3px;
+            font-weight: bold;
+            background: rgba(255, 255, 255, 0.1);
+        }
 
-.key {
-    display: inline-block;
-    border: 1px solid rgba(255, 255, 255, 0.7);
-    border-radius: 4px;
-    padding: 1px 7px;
-    margin: 0 3px;
-    font-weight: bold;
-    background: rgba(255, 255, 255, 0.1);
-}
+        #loading {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            color: #fff;
+            font-size: 24px;
+            z-index: 10;
+            transition: opacity 0.5s ease;
+        }
 
-#loading, #elevator-overlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
+        #mode-picker {
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.94);
+            color: #eee9c8;
+        }
 
-#loading {
-    background: #000;
-    color: #fff;
-    font-size: 24px;
-    z-index: 10;
-    transition: opacity 0.5s ease;
-}
+        .mode-panel {
+            width: min(420px, calc(100% - 36px));
+            padding: 26px 22px;
+            text-align: center;
+            border: 1px solid rgba(222, 217, 158, 0.36);
+            background: rgba(25, 24, 19, 0.94);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
+        }
 
-#mode-picker {
-    position: absolute;
-    inset: 0;
-    z-index: 20;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(0, 0, 0, 0.94);
-    color: #eee9c8;
-}
+        .mode-panel h1 {
+            margin: 0 0 22px;
+            font-size: 20px;
+            font-weight: normal;
+            letter-spacing: 0.08em;
+        }
 
-.mode-panel {
-    width: min(420px, calc(100% - 36px));
-    padding: 26px 22px;
-    text-align: center;
-    border: 1px solid rgba(222, 217, 158, 0.36);
-    background: rgba(25, 24, 19, 0.94);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.8);
-}
+        .mode-button {
+            width: 100%;
+            margin: 7px 0;
+            padding: 13px 12px;
+            border: 1px solid rgba(222, 217, 158, 0.4);
+            background: #29281f;
+            color: #eee9c8;
+            font: inherit;
+            cursor: pointer;
+        }
 
-.mode-panel h1 {
-    margin: 0 0 22px;
-    font-size: 20px;
-    font-weight: normal;
-    letter-spacing: 0.08em;
-}
+        .mode-button:active { background: #4b4935; }
 
-.mode-button {
-    width: 100%;
-    margin: 7px 0;
-    padding: 13px 12px;
-    border: 1px solid rgba(222, 217, 158, 0.4);
-    background: #29281f;
-    color: #eee9c8;
-    font: inherit;
-    cursor: pointer;
-}
+        #mobile-controls {
+            display: none;
+            gap: 8px;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            flex-wrap: wrap;
+            max-width: 260px;
+            margin: 8px auto 0;
+        }
 
-.mode-button:active { background: #4b4935; }
+        .mobile-button {
+            width: 54px;
+            height: 50px;
+            padding: 0;
+            border: 1px solid rgba(255, 255, 255, 0.55);
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.12);
+            color: #fff;
+            font: bold 20px "Courier New", monospace;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
 
-#mobile-controls {
-    display: none;
-    gap: 8px;
-    justify-content: center;
-    align-items: center;
-    pointer-events: auto;
-    flex-wrap: wrap;
-    max-width: 260px;
-    margin: 8px auto 0;
-}
-
-.mobile-button {
-    width: 54px;
-    height: 50px;
-    padding: 0;
-    border: 1px solid rgba(255, 255, 255, 0.55);
-    border-radius: 4px;
-    background: rgba(255, 255, 255, 0.12);
-    color: #fff;
-    font: bold 20px "Courier New", monospace;
-    touch-action: manipulation;
-    -webkit-tap-highlight-color: transparent;
-    user-select: none;
-}
-
-#mobile-controls .forward { width: 76px; }
+        #mobile-controls .forward { width: 76px; }
 
 body.mobile-mode #ui-layer {
-    bottom: max(10px, env(safe-area-inset-bottom));
-    min-width: 0;
-    width: min(92vw, 360px);
-    padding: 8px 10px 10px;
-}
-body.mobile-mode #ui-layer p { font-size: 12px; }
-body.mobile-mode #desktop-controls { display: none; }
-body.mobile-mode #mobile-controls { display: flex; }
+            bottom: max(10px, env(safe-area-inset-bottom));
+            min-width: 0;
+            width: min(92vw, 360px);
+            padding: 8px 10px 10px;
+        }
+        body.mobile-mode #ui-layer p { font-size: 12px; }
+        body.mobile-mode #desktop-controls { display: none; }
+        body.mobile-mode #mobile-controls { display: flex; }
 
-@media (max-width: 420px) {
-    .mode-panel { padding: 20px 16px; }
-    .mode-panel h1 { font-size: 17px; }
-    body.mobile-mode #ui-layer { width: calc(100vw - 20px); }
-    .mobile-button { width: 58px; height: 52px; }
-    #mobile-controls .forward { width: 82px; }
+        #game-over {
+            position: absolute;
+            inset: 0;
+            z-index: 1000;
+            display: none;
+            pointer-events: auto;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.90);
+            color: #eee9c8;
+            text-align: center;
+        }
+
+        .game-over-panel {
+            width: min(420px, calc(100% - 36px));
+            padding: 28px 22px;
+            border: 1px solid rgba(222, 217, 158, 0.36);
+            background: rgba(25, 24, 19, 0.96);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.9);
+        }
+
+        .game-over-panel h1 {
+            margin: 0 0 22px;
+            font-size: 25px;
+            font-weight: normal;
+            letter-spacing: 0.08em;
+        }
+
+        .game-over-stats {
+            margin: 0 0 24px;
+            line-height: 1.9;
+            font-size: 15px;
+        }
+
+        .game-over-button {
+            width: 100%;
+            padding: 11px 14px;
+            border: 1px solid rgba(255, 255, 255, 0.45);
+            border-radius: 4px;
+            background: #29281f;
+            color: #eee9c8;
+            font: inherit;
+            cursor: pointer;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .game-over-button:active { background: #4b4935; }
+
+        @media (max-width: 420px) {
+            .mode-panel { padding: 20px 16px; }
+            .mode-panel h1 { font-size: 17px; }
+            body.mobile-mode #ui-layer { width: calc(100vw - 20px); }
+            .mobile-button { width: 58px; height: 52px; }
+            #mobile-controls .forward { width: 82px; }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="mode-picker">
+        <div class="mode-panel">
+            <h1>WYBIERZ SPOSÓB GRY</h1>
+            <button class="mode-button" id="pc-mode">KOMPUTER — KLAWIATURA</button>
+            <button class="mode-button" id="mobile-mode">TELEFON — DOTYK</button>
+            <button class="mode-button" id="sandbox-mode">PIASKOWNICA — MOBILNY + KLAWIATURA</button>
+        </div>
+    </div>
+    <div id="loading">Generowanie podziemi...</div>
+    <div id="game-over">
+        <div class="game-over-panel">
+            <h1>PRZECIWNIK CIĘ DOPADŁ</h1>
+            <div class="game-over-stats" id="game-over-stats"></div>
+            <button type="button" class="game-over-button" id="game-over-reset" onclick="resetToMenu()">POWRÓT DO WYBORU TRYBU</button>
+        </div>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="ui-layer">
+        <p id="floor-label">Piętro 1 — Podziemia</p>
+        <div id="desktop-controls">
+            <p>Strzałka <span class="key">↑</span> - krok naprzód</p>
+            <p>Strzałki <span class="key">←</span><span class="key">→</span> - obrót o 90°</p>
+        </div>
+        <div id="mobile-controls">
+            <button class="mobile-button" data-action="left" aria-label="Obrót w lewo">←</button>
+            <button class="mobile-button forward" data-action="forward" aria-label="Krok naprzód">↑</button>
+            <button class="mobile-button" data-action="right" aria-label="Obrót w prawo">→</button>
+        </div>
+    </div>
+
+    <script>
+        // Audio System
+        class AudioManager {
+            constructor() {
+                this.audioContext = null;
+                this.sounds = {};
+                this.masterVolume = 0.7;
+                this.initialized = false;
+                this.enemyNoiseSource = null;
+                this.enemyNoiseGain = null;
+                this.enemyNoiseFilter = null;
+            }
+
+            async init() {
+                if (this.initialized) return;
+                try {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.audioContext = new AudioContext();
+                    this.initialized = true;
+                    this.createSounds();
+                    this.startEnemyNoise();
+                } catch (error) {
+                    console.warn("Audio nie jest dostępne:", error);
+                }
+            }
+
+            createSounds() {
+                this.sounds.footstep = this.createFootstepSound();
+                this.sounds.enemyNoise = this.createEnemyNoise();
+                this.sounds.enemyFootstep = this.createEnemyFootstepSound();
+            }
+
+            createEnemyNoise() {
+                const duration = 2.0;
+                const buffer = this.audioContext.createBuffer(1, Math.floor(this.audioContext.sampleRate * duration), this.audioContext.sampleRate);
+                const data = buffer.getChannelData(0);
+                let low = 0;
+                for (let i = 0; i < data.length; i++) {
+                    const white = Math.random() * 2 - 1;
+                    low = low * 0.985 + white * 0.015;
+                    data[i] = (white * 0.22 + low * 0.95) * 0.55;
+                }
+                return buffer;
+            }
+
+            startEnemyNoise() {
+                if (!this.initialized || this.enemyNoiseSource) return;
+                const source = this.audioContext.createBufferSource();
+                const gain = this.audioContext.createGain();
+                const filter = this.audioContext.createBiquadFilter();
+                source.buffer = this.sounds.enemyNoise;
+                source.loop = true;
+                filter.type = 'lowpass';
+                filter.frequency.value = 700;
+                filter.Q.value = 0.8;
+                gain.gain.value = 0;
+                source.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.audioContext.destination);
+                source.start();
+                this.enemyNoiseSource = source;
+                this.enemyNoiseGain = gain;
+                this.enemyNoiseFilter = filter;
+            }
+
+            updateEnemyNoise(enemyGridX, enemyGridZ, playerGridX, playerGridZ) {
+                if (!this.initialized || !this.enemyNoiseGain) return;
+                const distance = Math.hypot(enemyGridX - playerGridX, enemyGridZ - playerGridZ);
+                const proximity = Math.max(0, Math.min(1, 1 - distance / 50));
+                const volume = 0.006 + Math.pow(proximity, 2.2) * 0.32;
+                const frequency = 350 + proximity * 1400;
+                const now = this.audioContext.currentTime;
+                this.enemyNoiseGain.gain.cancelScheduledValues(now);
+                this.enemyNoiseGain.gain.linearRampToValueAtTime(volume * this.masterVolume, now + 0.12);
+                this.enemyNoiseFilter.frequency.setTargetAtTime(frequency, now, 0.15);
+            }
+
+            createEnemyFootstepSound() {
+                // Cięższy, ale nadal naturalny krok: krótki stuk + niski kontakt stopy z podłogą.
+                const duration = 0.20;
+                const buffer = this.audioContext.createBuffer(1, Math.floor(this.audioContext.sampleRate * duration), this.audioContext.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < data.length; i++) {
+                    const t = i / this.audioContext.sampleRate;
+                    const attack = Math.exp(-t * 34);
+                    const body = Math.exp(-t * 12);
+                    const thump = Math.sin(2 * Math.PI * 62 * t) * 0.55 * body;
+                    const impact = Math.sin(2 * Math.PI * 105 * t) * 0.32 * attack;
+                    const grit = (Math.random() * 2 - 1) * 0.10 * attack;
+                    data[i] = (thump + impact + grit) * 0.48;
+                }
+                return buffer;
+            }
+
+            createFootstepSound() {
+                // Krótki, wyraźny dźwięk kontaktu buta z podłogą.
+                const duration = 0.17;
+                const buffer = this.audioContext.createBuffer(1, Math.floor(this.audioContext.sampleRate * duration), this.audioContext.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < data.length; i++) {
+                    const t = i / this.audioContext.sampleRate;
+                    const attack = Math.exp(-t * 38);
+                    const body = Math.exp(-t * 15);
+                    const thump = Math.sin(2 * Math.PI * 78 * t) * 0.38 * body;
+                    const impact = Math.sin(2 * Math.PI * 135 * t) * 0.28 * attack;
+                    const noise = (Math.random() * 2 - 1) * 0.12 * attack;
+                    data[i] = (thump + impact + noise) * 0.58;
+                }
+                return buffer;
+            }
+
+            play(soundName, options = {}) {
+                if (!this.initialized || !this.sounds[soundName]) return;
+
+                const buffer = this.sounds[soundName];
+                const source = this.audioContext.createBufferSource();
+                const gainNode = this.audioContext.createGain();
+                source.buffer = buffer;
+                gainNode.gain.value = (options.volume !== undefined ? options.volume : 1.0) * this.masterVolume;
+                source.playbackRate.value = options.rate !== undefined ? options.rate : 1.0;
+                source.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+                source.start(this.audioContext.currentTime);
+            }
+
+            playFootstep() {
+                if (!this.initialized || !this.sounds.footstep) return;
+                const now = this.audioContext.currentTime;
+                const source = this.audioContext.createBufferSource();
+                const gain = this.audioContext.createGain();
+                const filter = this.audioContext.createBiquadFilter();
+                const echo = this.audioContext.createDelay(0.5);
+                const echoGain = this.audioContext.createGain();
+
+                source.buffer = this.sounds.footstep;
+                source.playbackRate.value = 0.94 + Math.random() * 0.10;
+                filter.type = 'lowpass';
+                filter.frequency.value = 1500;
+                filter.Q.value = 0.7;
+                gain.gain.value = (0.68 + Math.random() * 0.12) * this.masterVolume;
+                echo.delayTime.value = 0.18 + Math.random() * 0.07;
+                echoGain.gain.value = 0.24 * this.masterVolume;
+
+                source.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.audioContext.destination);
+                gain.connect(echo);
+                echo.connect(echoGain);
+                echoGain.connect(this.audioContext.destination);
+                source.start(now);
+            }
+
+            playEnemyFootstep(distance = 20) {
+                if (!this.initialized || !this.sounds.enemyFootstep) return;
+                const now = this.audioContext.currentTime;
+                const source = this.audioContext.createBufferSource();
+                const gain = this.audioContext.createGain();
+                const filter = this.audioContext.createBiquadFilter();
+                const echo = this.audioContext.createDelay(0.65);
+                const echoGain = this.audioContext.createGain();
+                const proximity = Math.max(0, Math.min(1, 1 - distance / 50));
+
+                source.buffer = this.sounds.enemyFootstep;
+                source.playbackRate.value = 0.88 + Math.random() * 0.08;
+                filter.type = 'lowpass';
+                filter.frequency.value = 1150;
+                filter.Q.value = 0.55;
+
+                // Kroki przeciwnika są zawsze słyszalne, ale bardzo ciche.
+                // Szum przeciwnika nie ma wpływu na ich istnienie.
+                const baseVolume = 0.075;
+                const nearBoost = proximity * 0.10;
+                gain.gain.value = (baseVolume + nearBoost) * this.masterVolume;
+
+                // Dłuższe, cichsze echo ma dawać wrażenie kroków odbijających się w korytarzu.
+                echo.delayTime.value = 0.24 + Math.random() * 0.12;
+                echoGain.gain.value = (0.20 + proximity * 0.06) * this.masterVolume;
+
+                source.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.audioContext.destination);
+                gain.connect(echo);
+                echo.connect(echoGain);
+                echoGain.connect(this.audioContext.destination);
+                source.start(now);
+            }
+
+            setMasterVolume(volume) {
+                this.masterVolume = Math.max(0, Math.min(1, volume));
+            }
+        }
+        const audioManager = new AudioManager();
+
+        let scene, camera, renderer;
+        let wallInstancedMesh, floorInstancedMesh, ceilInstancedMesh;
+        let puddleInstancedMesh, wallStainInstancedMesh;
+        let wallMaterial, floorMaterial, ceilMaterial, puddleMaterial, wallStainMaterial;
+        let ambientLight, flashlight;
+
+        let gameMode = "pc";
+        let sandboxMode = false;
+        const BLOCK_SIZE = 2;
+        const HALF_BLOCK = BLOCK_SIZE / 2;
+        const RENDER_RADIUS = 12;
+        const MAX_INSTANCES = (RENDER_RADIUS * 2 + 1) * (RENDER_RADIUS * 2 + 1);
+        const MAX_PUDDLES = MAX_INSTANCES;
+        const MAX_WALL_STAINS = MAX_INSTANCES * 4;
+        const DECAL_EPSILON = 0.018;
+        const DIRECTIONS = [
+            { x: 0, z: -1 }, { x: 1, z: 0 }, { x: 0, z: 1 }, { x: -1, z: 0 }
+        ];
+
+        let gridX = 0, gridZ = 0;
+        let currentYaw = 0;
+        let targetX = 0, targetZ = 0, targetYaw = 0;
+        let isMoving = false, isRotating = false;
+        // Losowe ziarno przy każdym uruchomieniu — każdy start tworzy inny układ.
+        let floorSeed = Math.floor(Math.random() * 2147483647);
+        let lastWorldGridX = null, lastWorldGridZ = null;
+
+        // Przeciwnik działa we wszystkich trybach.
+        let enemyX = 0, enemyZ = 0;
+        let enemyActive = false;
+        let enemyMesh = null, enemyLight = null;
+        const ENEMY_SPAWN_DISTANCE = 30;
+        const ENEMY_MAX_SEARCH = 10000;
+        const ENEMY_MOVE_DELAY = 1000; // przeciwnik porusza się co 1 sekundę
+        let enemyMoveTimer = null;
+        let gameStartTime = 0;
+        let playerSteps = 0;
+        let gameOver = false;
+
+
+        function mod(n, m) { return ((n % m) + m) % m; }
+
+        function pseudoRandom(x, z, salt) {
+            const extra = salt || 0;
+            const n = Math.sin(
+                (x + floorSeed * 0.173 + extra * 19.19) * 127.1 +
+                (z - floorSeed * 0.311 - extra * 7.73) * 311.7
+            ) * 43758.5453123;
+            return n - Math.floor(n);
+        }
+
+        function directionFromYaw(yaw) {
+            return { x: Math.round(Math.sin(-yaw)), z: Math.round(-Math.cos(-yaw)) };
+        }
+
+        function isProtectedEntranceCell(x, z) {
+            return (x === 0 && z === 0) || (Math.abs(x) + Math.abs(z) === 1);
+        }
+
+        function getCell(x, z) {
+            // Piaskownica: wszystkie komórki są otwarte, więc nie ma żadnych ścian.
+            if (sandboxMode) return 0;
+            if (isProtectedEntranceCell(x, z)) return 0;
+            const isEvenX = mod(x, 2) === 0;
+            const isEvenZ = mod(z, 2) === 0;
+            if (isEvenX && isEvenZ) return 1;
+            if (!isEvenX && !isEvenZ) return 0;
+            return pseudoRandom(x, z, 1) < 0.4 ? 1 : 0;
+        }
+
+        function makeOrganicBlob(ctx, x, y, radiusX, radiusY, color, points) {
+            const pointCount = points || 16;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            for (let point = 0; point < pointCount; point++) {
+                const angle = point / pointCount * Math.PI * 2;
+                const wobble = 0.65 + Math.random() * 0.55;
+                const px = x + Math.cos(angle) * radiusX * wobble;
+                const py = y + Math.sin(angle) * radiusY * wobble;
+                if (point === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+        }
+
+        function createDirtTexture(baseHex, noiseHex1, noiseHex2, isFloor) {
+            const canvas = document.createElement("canvas");
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = baseHex;
+            ctx.fillRect(0, 0, 512, 512);
+
+            for (let i = 0; i < 30000; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? noiseHex1 : noiseHex2;
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                ctx.fillRect(x, y, Math.random() * 3, Math.random() * 3);
+            }
+
+            for (let i = 0; i < 60; i++) {
+                ctx.fillStyle = "rgba(10, 10, 10, " + (Math.random() * 0.4) + ")";
+                ctx.beginPath();
+                ctx.arc(
+                    Math.random() * 512, Math.random() * 512,
+                    Math.random() * (isFloor ? 40 : 80), 0, Math.PI * 2
+                );
+                ctx.fill();
+            }
+
+            if (isFloor) {
+                ctx.strokeStyle = "rgba(0, 0, 0, 0.75)";
+                ctx.lineWidth = 4;
+                ctx.strokeRect(0, 0, 512, 512);
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.magFilter = THREE.LinearFilter;
+            texture.minFilter = THREE.LinearMipmapLinearFilter;
+            return texture;
+        }
+
+        function createPuddleTexture() {
+            const canvas = document.createElement("canvas");
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext("2d");
+
+            for (let layer = 0; layer < 9; layer++) {
+                const size = 104 - layer * 8;
+                const alpha = 0.08 + layer * 0.025;
+                makeOrganicBlob(
+                    ctx, 128 + (Math.random() - 0.5) * 15, 128 + (Math.random() - 0.5) * 15,
+                    size, size * (0.55 + Math.random() * 0.22),
+                    "rgba(24, 43, 35, " + alpha + ")", 22
+                );
+            }
+            ctx.strokeStyle = "rgba(151, 168, 126, 0.16)";
+            ctx.lineWidth = 2;
+            for (let line = 0; line < 3; line++) {
+                ctx.beginPath();
+                ctx.ellipse(128, 128, 50 + line * 14, 24 + line * 7, Math.random(), 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.magFilter = THREE.LinearFilter;
+            texture.minFilter = THREE.LinearMipmapLinearFilter;
+            return texture;
+        }
+
+        function createWallStainTexture() {
+            const canvas = document.createElement("canvas");
+            canvas.width = 256; canvas.height = 256;
+            const ctx = canvas.getContext("2d");
+
+            for (let cluster = 0; cluster < 28; cluster++) {
+                const x = 42 + Math.random() * 172;
+                const y = 28 + Math.random() * 175;
+                const size = 8 + Math.random() * 33;
+                makeOrganicBlob(
+                    ctx, x, y, size, size * (0.45 + Math.random() * 0.55),
+                    "rgba(18, " + Math.floor(49 + Math.random() * 28) + ", 25, " + (0.11 + Math.random() * 0.22) + ")", 13
+                );
+                if (Math.random() < 0.42) {
+                    ctx.fillStyle = "rgba(18, 56, 27, 0.24)";
+                    ctx.fillRect(x - 1, y, 2 + Math.random() * 3, 16 + Math.random() * 48);
+                }
+            }
+
+            for (let speck = 0; speck < 85; speck++) {
+                ctx.fillStyle = "rgba(24, 71, 32, " + (0.08 + Math.random() * 0.25) + ")";
+                ctx.beginPath();
+                ctx.arc(Math.random() * 256, Math.random() * 256, 1 + Math.random() * 4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.magFilter = THREE.LinearFilter;
+            texture.minFilter = THREE.LinearMipmapLinearFilter;
+            return texture;
+        }
+
+
+        function manhattanDistance(x1, z1, x2, z2) {
+            return Math.abs(x1 - x2) + Math.abs(z1 - z2);
+        }
+
+        function isWalkable(x, z) {
+            return getCell(x, z) === 0;
+        }
+
+        // Sprawdza, czy przeciwnik ma rzeczywiście przejście do gracza.
+        // BFS działa na komórkach labiryntu i respektuje wszystkie ściany.
+        function hasPathBetween(startX, startZ, goalX, goalZ) {
+            if (startX === goalX && startZ === goalZ) return true;
+            if (!isWalkable(startX, startZ) || !isWalkable(goalX, goalZ)) return false;
+
+            const queue = [{ x: startX, z: startZ }];
+            const visited = new Set([startX + "," + startZ]);
+            let head = 0;
+            const dirs = [
+                { x: 0, z: -1 },
+                { x: 1, z: 0 },
+                { x: 0, z: 1 },
+                { x: -1, z: 0 }
+            ];
+
+            // Wystarczający zapas dla odległości startowej 30 pól.
+            const maxVisited = 12000;
+
+            while (head < queue.length && visited.size < maxVisited) {
+                const current = queue[head++];
+
+                for (const d of dirs) {
+                    const nx = current.x + d.x;
+                    const nz = current.z + d.z;
+                    const key = nx + "," + nz;
+
+                    if (visited.has(key) || !isWalkable(nx, nz)) continue;
+                    if (nx === goalX && nz === goalZ) return true;
+
+                    visited.add(key);
+                    queue.push({ x: nx, z: nz });
+                }
+            }
+
+            return false;
+        }
+
+        function findEnemySpawn() {
+            // Przeciwnik spawnuje się DOKŁADNIE 30 pól od gracza
+            // (odległość Manhattan: |dx| + |dz| = 30).
+            const candidates = [];
+            const d = ENEMY_SPAWN_DISTANCE;
+
+            for (let dx = -d; dx <= d; dx++) {
+                const dzAbs = d - Math.abs(dx);
+                const zs = dzAbs === 0 ? [0] : [dzAbs, -dzAbs];
+                for (const dz of zs) {
+                    if (dx === 0 && dz === 0) continue;
+                    candidates.push({ x: gridX + dx, z: gridZ + dz });
+                }
+            }
+
+            for (let i = candidates.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+            }
+
+            for (const c of candidates) {
+                if (isWalkable(c.x, c.z) && hasPathBetween(c.x, c.z, gridX, gridZ)) {
+                    return c;
+                }
+            }
+
+            // Jeżeli w danym losowym układzie nie ma dostępnego pola dokładnie
+            // 30 pól dalej, szukamy ponownie po całym pierścieniu 30 pól.
+            // Nie zmniejszamy odległości — przeciwnik nadal zaczyna 30 pól dalej.
+            for (const c of candidates) {
+                if (isWalkable(c.x, c.z)) return c;
+            }
+
+            return { x: gridX, z: gridZ };
+        }
+
+        function createEnemy() {
+            const geometry = new THREE.SphereGeometry(0.28, 12, 8);
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x8a6b42,
+                emissive: 0x3b230c,
+                emissiveIntensity: 1.4,
+                roughness: 0.65
+            });
+            enemyMesh = new THREE.Mesh(geometry, material);
+            enemyMesh.position.set(enemyX * BLOCK_SIZE, -0.05, enemyZ * BLOCK_SIZE);
+            enemyMesh.castShadow = true;
+            scene.add(enemyMesh);
+
+            // Własna "latarka" przeciwnika: stożek światła skierowany w stronę gracza.
+            enemyLight = new THREE.SpotLight(0xffe8b0, 11.0, BLOCK_SIZE * 4, Math.PI / 5, 0.55, 1.5);
+            enemyLight.castShadow = true;
+            enemyLight.shadow.mapSize.width = gameMode === "mobile" ? 512 : 1024;
+            enemyLight.shadow.mapSize.height = gameMode === "mobile" ? 512 : 1024;
+            enemyLight.shadow.camera.near = 0.1;
+            enemyLight.shadow.camera.far = BLOCK_SIZE * 4;
+            enemyLight.position.set(0, 0.12, 0);
+            enemyLight.target.position.set(0, 0, -2);
+            enemyMesh.add(enemyLight);
+            enemyMesh.add(enemyLight.target);
+
+            enemyActive = true;
 }
 
-#elevator-overlay {
-    color: rgba(229, 229, 202, 0.9);
-    background: #000;
-    font-size: 18px;
-    letter-spacing: 0.1em;
-    opacity: 0;
-    pointer-events: none;
-    z-index: 5;
-    transition: opacity 0.08s linear;
+        function updateEnemyLight() {
+            if (!enemyMesh || !enemyLight) return;
+
+            const dx = gridX - enemyX;
+            const dz = gridZ - enemyZ;
+            const len = Math.hypot(dx, dz) || 1;
+
+            // Latarka jest zawsze skierowana dokładnie w kierunku gracza.
+            // Kierunek ustawiamy przez obrót przeciwnika, więc nie obracamy celu drugi raz.
+            enemyLight.target.position.set(0, 0, -2);
+            enemyMesh.rotation.y = Math.atan2(dx, -dz);
+            audioManager.updateEnemyNoise(enemyX, enemyZ, gridX, gridZ);
+        }
+
+        function findFastestEnemyPath() {
+            const startKey = enemyX + "," + enemyZ;
+            const goalKey = gridX + "," + gridZ;
+            if (startKey === goalKey) return [];
+
+            const dirs = [
+                { x: 0, z: -1 },
+                { x: 1, z: 0 },
+                { x: 0, z: 1 },
+                { x: -1, z: 0 }
+            ];
+
+            function heuristic(x, z) {
+                return Math.abs(x - gridX) + Math.abs(z - gridZ);
+            }
+
+            const open = [{
+                x: enemyX,
+                z: enemyZ,
+                g: 0,
+                f: heuristic(enemyX, enemyZ)
+            }];
+
+            const cameFrom = new Map();
+            const gScore = new Map([[startKey, 0]]);
+            const closed = new Set();
+
+            while (open.length && closed.size < ENEMY_MAX_SEARCH) {
+                // Najmniejsze f = najbardziej obiecujący węzeł.
+                let bestIndex = 0;
+                for (let i = 1; i < open.length; i++) {
+                    if (open[i].f < open[bestIndex].f) bestIndex = i;
+                }
+
+                const current = open.splice(bestIndex, 1)[0];
+                const currentKey = current.x + "," + current.z;
+
+                if (closed.has(currentKey)) continue;
+                closed.add(currentKey);
+
+                if (current.x === gridX && current.z === gridZ) {
+                    const path = [];
+                    let key = currentKey;
+                    while (key !== startKey) {
+                        const node = cameFrom.get(key);
+                        if (!node) return [];
+                        path.push({ x: node.x, z: node.z });
+                        key = node.from;
+                    }
+                    path.reverse();
+                    return path;
+                }
+
+                for (const d of dirs) {
+                    const nx = current.x + d.x;
+                    const nz = current.z + d.z;
+                    if (!isWalkable(nx, nz)) continue;
+
+                    const neighborKey = nx + "," + nz;
+                    if (closed.has(neighborKey)) continue;
+
+                    const tentativeG = current.g + 1;
+                    const oldG = gScore.has(neighborKey)
+                        ? gScore.get(neighborKey)
+                        : Infinity;
+
+                    if (tentativeG < oldG) {
+                        gScore.set(neighborKey, tentativeG);
+                        cameFrom.set(neighborKey, {
+                            from: currentKey,
+                            x: nx,
+                            z: nz
+                        });
+
+                        open.push({
+                            x: nx,
+                            z: nz,
+                            g: tentativeG,
+                            f: tentativeG + heuristic(nx, nz)
+                        });
+                    }
+                }
+            }
+
+            return [];
+        }
+
+        function moveEnemyOneStep() {
+            if (!enemyActive) return;
+
+            // Każdy ruch gracza powoduje dokładnie jeden krok przeciwnika.
+            // Trasa jest liczona od nowa po KAŻDYM ruchu gracza.
+            let path = findFastestEnemyPath();
+
+            // Jeżeli aktualna pozycja nie ma ścieżki (np. przez nietypowy
+            // fragment proceduralnego generatora), przeciwnik szuka ponownie
+            // z losowej pozycji w połączonej części mapy.
+            if (path.length === 0 && !(enemyX === gridX && enemyZ === gridZ)) {
+                const replacement = findEnemySpawn();
+                enemyX = replacement.x;
+                enemyZ = replacement.z;
+                if (enemyMesh) {
+                    enemyMesh.position.set(
+                        enemyX * BLOCK_SIZE,
+                        -0.05,
+                        enemyZ * BLOCK_SIZE
+                    );
+                }
+                path = findFastestEnemyPath();
+            }
+
+            if (path.length > 0) {
+                const next = path[0];
+                enemyX = next.x;
+                enemyZ = next.z;
+
+                if (enemyMesh) {
+                    enemyMesh.position.set(
+                        enemyX * BLOCK_SIZE,
+                        -0.05,
+                        enemyZ * BLOCK_SIZE
+                    );
+                }
+                const enemyDistance = Math.hypot(enemyX - gridX, enemyZ - gridZ);
+                audioManager.playEnemyFootstep(enemyDistance);
+                updateEnemyLight();
+            }
+// Kontakt = przegrana. Bez przemocy graficznej.
+            if (enemyX === gridX && enemyZ === gridZ) {
+                showGameOver();
+            }
+        }
+
+        function formatGameTime(seconds) {
+            const total = Math.max(0, Math.floor(seconds));
+            const minutes = Math.floor(total / 60);
+            const secs = total % 60;
+            return String(minutes).padStart(2, "0") + ":" + String(secs).padStart(2, "0");
+        }
+
+        function showGameOver() {
+            if (gameOver) return;
+            gameOver = true;
+            enemyActive = false;
+            if (enemyMoveTimer) {
+                clearInterval(enemyMoveTimer);
+                enemyMoveTimer = null;
+            }
+
+            const elapsedSeconds = (performance.now() - gameStartTime) / 1000;
+            const distanceMeters = playerSteps * BLOCK_SIZE;
+            const stats = document.getElementById("game-over-stats");
+            stats.innerHTML =
+                "Czas gry: <strong>" + formatGameTime(elapsedSeconds) + "</strong><br>" +
+                "Przebyta odległość: <strong>" + distanceMeters.toFixed(0) + " m</strong><br>" +
+                "Przejścia między polami: <strong>" + playerSteps + "</strong>";
+
+            const gameOverScreen = document.getElementById("game-over");
+            gameOverScreen.style.display = "flex";
+        }
+
+        function spawnEnemy() {
+            const spawn = findEnemySpawn();
+            enemyX = spawn.x;
+            enemyZ = spawn.z;
+            createEnemy();
+            updateEnemyLight();
 }
+
+        function init() {
+            gameStartTime = performance.now();
+            playerSteps = 0;
+            gameOver = false;
+            const canvas = document.getElementById("gameCanvas");
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x090907); // Mgła Podziemi
+            scene.fog = new THREE.FogExp2(0x090907, 0.08);
+
+            const cameraFov = gameMode === "mobile" ? 92 : 75;
+            camera = new THREE.PerspectiveCamera(cameraFov, window.innerWidth / window.innerHeight, 0.1, 50);
+            camera.position.set(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                antialias: gameMode !== "mobile",
+                powerPreference: "high-performance"
+            });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, gameMode === "mobile" ? 1.35 : 2));
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            ambientLight = new THREE.AmbientLight(0x000000, 1); // Ciemność totalna jako baza podziemi
+            scene.add(ambientLight);
+
+            flashlight = new THREE.SpotLight(0xfff4d2, 5.5, BLOCK_SIZE * 2.2, Math.PI / 5, 0.62, 2);
+            flashlight.position.set(0, 0.02, -0.12);
+            flashlight.target.position.set(0, 0.02, -2.4);
+            flashlight.castShadow = gameMode !== "mobile";
+            flashlight.shadow.mapSize.width = gameMode === "mobile" ? 512 : 1024;
+            flashlight.shadow.mapSize.height = gameMode === "mobile" ? 512 : 1024;
+            flashlight.shadow.camera.near = 0.1;
+            flashlight.shadow.camera.far = BLOCK_SIZE * 2.2;
+            camera.add(flashlight);
+            camera.add(flashlight.target);
+            scene.add(camera);
+
+            const wallTex = createDirtTexture("#30302c", "#151513", "#4a4940", false);
+            const floorTex = createDirtTexture("#292925", "#11110f", "#44433b", true);
+            const ceilTex = createDirtTexture("#0d0d0d", "#000000", "#151515", true);
+            const puddleTex = createPuddleTexture();
+            const wallStainTex = createWallStainTexture();
+
+            // Kolory charakterystyczne dla Podziemi
+            wallMaterial = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.9, metalness: 0.1, color: 0x55544d });
+            floorMaterial = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 1.0, color: 0x46453f });
+            ceilMaterial = new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 1.0, color: 0x353530 });
+            puddleMaterial = new THREE.MeshStandardMaterial({
+                map: puddleTex, transparent: true, alphaTest: 0.04,
+                depthWrite: false, roughness: 0.12, metalness: 0.28, color: 0x65706c
+            });
+            wallStainMaterial = new THREE.MeshStandardMaterial({
+                map: wallStainTex, transparent: true, alphaTest: 0.05,
+                depthWrite: false, color: 0xffffff, side: THREE.DoubleSide, roughness: 1
+            });
+
+            const boxGeo = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            const floorGeo = new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE);
+            floorGeo.rotateX(-Math.PI / 2);
+            const ceilGeo = new THREE.PlaneGeometry(BLOCK_SIZE, BLOCK_SIZE);
+            ceilGeo.rotateX(Math.PI / 2);
+            const puddleGeo = new THREE.PlaneGeometry(1, 1);
+            puddleGeo.rotateX(-Math.PI / 2);
+            const wallStainGeo = new THREE.PlaneGeometry(1, 1);
+
+            wallInstancedMesh = new THREE.InstancedMesh(boxGeo, wallMaterial, MAX_INSTANCES);
+            floorInstancedMesh = new THREE.InstancedMesh(floorGeo, floorMaterial, MAX_INSTANCES);
+            ceilInstancedMesh = new THREE.InstancedMesh(ceilGeo, ceilMaterial, MAX_INSTANCES);
+            puddleInstancedMesh = new THREE.InstancedMesh(puddleGeo, puddleMaterial, MAX_PUDDLES);
+            wallStainInstancedMesh = new THREE.InstancedMesh(wallStainGeo, wallStainMaterial, MAX_WALL_STAINS);
+            
+            [wallInstancedMesh, floorInstancedMesh, ceilInstancedMesh, puddleInstancedMesh, wallStainInstancedMesh].forEach(mesh => {
+                mesh.frustumCulled = false;
+                mesh.receiveShadow = true;
+                scene.add(mesh);
+            });
+            // Ściany muszą rzucać cień, inaczej latarka przeciwnika prześwieca przez nie.
+            wallInstancedMesh.castShadow = true;
+
+            audioManager.init();
+            updateWorld();
+            spawnEnemy();
+
+            // Przeciwnik porusza się niezależnie od gracza:
+            // dokładnie 1 pole co 1 sekundę.
+            if (enemyMoveTimer) clearInterval(enemyMoveTimer);
+            enemyMoveTimer = setInterval(function() {
+                if (enemyActive) moveEnemyOneStep();
+            }, ENEMY_MOVE_DELAY);
+
+            setTimeout(function() {
+                const loading = document.getElementById("loading");
+                loading.style.opacity = "0";
+                setTimeout(() => loading.style.display = "none", 500);
+            }, 100);
+
+            requestAnimationFrame(animate);
+        }
+
+        function updateWorld() {
+            const dummy = new THREE.Object3D();
+            const decalDummy = new THREE.Object3D();
+            let wallCount = 0;
+            let floorCount = 0;
+            let ceilCount = 0;
+            let puddleCount = 0;
+            let wallStainCount = 0;
+
+            for (let x = gridX - RENDER_RADIUS; x <= gridX + RENDER_RADIUS; x++) {
+                for (let z = gridZ - RENDER_RADIUS; z <= gridZ + RENDER_RADIUS; z++) {
+                    const cellType = getCell(x, z);
+                    const worldX = x * BLOCK_SIZE;
+                    const worldZ = z * BLOCK_SIZE;
+
+                    if (cellType === 1) {
+                        // Tworzenie ściany
+                        dummy.position.set(worldX, 0, worldZ);
+                        dummy.rotation.set(0, 0, 0);
+                        dummy.scale.set(1, 1, 1);
+                        dummy.updateMatrix();
+                        wallInstancedMesh.setMatrixAt(wallCount++, dummy.matrix);
+
+                        // Generowanie plam na ścianach
+                        const faces = [
+                            { dx: 0, dz: 1, x: 0, z: HALF_BLOCK + DECAL_EPSILON, rotation: 0 },
+                            { dx: 0, dz: -1, x: 0, z: -HALF_BLOCK - DECAL_EPSILON, rotation: Math.PI },
+                            { dx: 1, dz: 0, x: HALF_BLOCK + DECAL_EPSILON, z: 0, rotation: Math.PI / 2 },
+                            { dx: -1, dz: 0, x: -HALF_BLOCK - DECAL_EPSILON, z: 0, rotation: -Math.PI / 2 }
+                        ];
+
+                        faces.forEach(function(face, faceIndex) {
+                            if (
+                                wallStainCount >= MAX_WALL_STAINS ||
+                                getCell(x + face.dx, z + face.dz) !== 0 ||
+                                pseudoRandom(x, z, 100 + faceIndex * 9) >= 0.32
+                            ) {
+                                return;
+                            }
+
+                            const width = 0.42 + pseudoRandom(x, z, 101 + faceIndex * 9) * 0.98;
+                            const height = 0.38 + pseudoRandom(x, z, 102 + faceIndex * 9) * 0.92;
+                            const y = -0.36 + pseudoRandom(x, z, 103 + faceIndex * 9) * 0.54;
+                            decalDummy.position.set(worldX + face.x, y, worldZ + face.z);
+                            decalDummy.rotation.set(0, face.rotation, 0);
+                            decalDummy.scale.set(width, height, 1);
+                            decalDummy.updateMatrix();
+                            wallStainInstancedMesh.setMatrixAt(wallStainCount++, decalDummy.matrix);
+                        });
+                    } else {
+                        // Podłoga jest taka sama jak w labiryncie.
+                        dummy.position.set(worldX, -HALF_BLOCK, worldZ);
+                        dummy.rotation.set(0, 0, 0);
+                        dummy.scale.set(1, 1, 1);
+                        dummy.updateMatrix();
+                        floorInstancedMesh.setMatrixAt(floorCount++, dummy.matrix);
+
+                        // Piaskownica ma tylko płaską powierzchnię — bez sufitu i ścian.
+                        if (!sandboxMode) {
+                            dummy.position.set(worldX, HALF_BLOCK, worldZ);
+                            dummy.updateMatrix();
+                            ceilInstancedMesh.setMatrixAt(ceilCount++, dummy.matrix);
+
+                            // Kałuże tylko w normalnych podziemiach.
+                            if (
+                                puddleCount < MAX_PUDDLES &&
+                                !(x === 0 && z === 0) &&
+                                pseudoRandom(x, z, 11) < 0.17
+                            ) {
+                                const scaleX = 0.45 + pseudoRandom(x, z, 12) * 0.95;
+                                const scaleZ = 0.26 + pseudoRandom(x, z, 13) * 0.62;
+                                decalDummy.position.set(
+                                    worldX + (pseudoRandom(x, z, 14) - 0.5) * 0.55,
+                                    -HALF_BLOCK + DECAL_EPSILON,
+                                    worldZ + (pseudoRandom(x, z, 15) - 0.5) * 0.55
+                                );
+                                decalDummy.rotation.set(0, pseudoRandom(x, z, 16) * Math.PI * 2, 0);
+                                decalDummy.scale.set(scaleX, scaleZ, 1);
+                                decalDummy.updateMatrix();
+                                puddleInstancedMesh.setMatrixAt(puddleCount++, decalDummy.matrix);
+                            }
+                        }
+                    }
+                }
+            }
+
+            wallInstancedMesh.count = wallCount;
+            wallInstancedMesh.instanceMatrix.needsUpdate = true;
+            floorInstancedMesh.count = floorCount;
+            floorInstancedMesh.instanceMatrix.needsUpdate = true;
+            ceilInstancedMesh.count = ceilCount;
+            ceilInstancedMesh.instanceMatrix.needsUpdate = true;
+            puddleInstancedMesh.count = puddleCount;
+            puddleInstancedMesh.instanceMatrix.needsUpdate = true;
+            wallStainInstancedMesh.count = wallStainCount;
+            wallStainInstancedMesh.instanceMatrix.needsUpdate = true;
+
+            lastWorldGridX = gridX;
+            lastWorldGridZ = gridZ;
+        }
+
+        function moveForward() {
+            if (isMoving) return;
+            const direction = directionFromYaw(currentYaw);
+            const nextX = gridX + direction.x;
+            const nextZ = gridZ + direction.z;
+            if (getCell(nextX, nextZ) === 0) {
+                isMoving = true;
+                targetX = nextX * BLOCK_SIZE;
+                targetZ = nextZ * BLOCK_SIZE;
+                gridX = nextX;
+                gridZ = nextZ;
+                playerSteps++;
+                audioManager.playFootstep();
+
+            }
+        }
+
+        function rotateLeft() {
+            if (isRotating) return;
+            isRotating = true;
+            targetYaw = currentYaw + Math.PI / 2;
+        }
+
+        function rotateRight() {
+            if (isRotating) return;
+            isRotating = true;
+            targetYaw = currentYaw - Math.PI / 2;
+        }
+
+        function resetToMenu() {
+            if (enemyMoveTimer) {
+                clearInterval(enemyMoveTimer);
+                enemyMoveTimer = null;
+            }
+            enemyActive = false;
+            window.location.href = window.location.href;
+        }
+
+        function handleKeyDown(event) {
+            const key = event.key.toLowerCase();
+            if (key === "q" && gameOver) {
+                event.preventDefault();
+                resetToMenu();
+                return;
+            }
+            // Piaskownica używa interfejsu mobilnego, ale nadal obsługuje klawiaturę.
+            if (gameMode !== "pc" && !sandboxMode) return;
+            if (key === "arrowup") moveForward();
+            if (key === "arrowleft") rotateLeft();
+            if (key === "arrowright") rotateRight();
+        }
+
+        function animate(now) {
+            if (enemyActive) audioManager.updateEnemyNoise(enemyX, enemyZ, gridX, gridZ);
+            const elapsed = now - (animate.lastTime || now);
+            animate.lastTime = now;
+            const dt = Math.min(elapsed / 1000, 0.1);
+
+            if (isMoving) {
+                const dist = Math.hypot(targetX - camera.position.x, targetZ - camera.position.z);
+                if (dist < 0.05) {
+                    camera.position.x = targetX;
+                    camera.position.z = targetZ;
+                    isMoving = false;
+                    // Odświeżenie świata po zakończeniu ruchu na nowy blok
+                    if (gridX !== lastWorldGridX || gridZ !== lastWorldGridZ) {
+                        updateWorld();
+                    }
+                } else {
+                    const speed = 8;
+                    const moveX = (targetX - camera.position.x) / dist * speed * dt;
+                    const moveZ = (targetZ - camera.position.z) / dist * speed * dt;
+                    camera.position.x += moveX;
+                    camera.position.z += moveZ;
+                }
+            }
+
+            if (isRotating) {
+                let diff = targetYaw - currentYaw;
+                if (diff > Math.PI) diff -= Math.PI * 2;
+                if (diff < -Math.PI) diff += Math.PI * 2;
+                if (Math.abs(diff) < 0.05) {
+                    currentYaw = targetYaw;
+                    isRotating = false;
+                } else {
+                    const speed = 3;
+                    currentYaw += diff / Math.abs(diff) * speed * dt;
+                }
+                camera.rotation.y = currentYaw;
+            }
+
+            camera.position.y = 0;
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+
+        document.addEventListener("keydown", handleKeyDown);
+
+        const modePicker = document.getElementById("mode-picker");
+        const pcModeBtn = document.getElementById("pc-mode");
+        const mobileModeBtn = document.getElementById("mobile-mode");
+
+        if (pcModeBtn) {
+            pcModeBtn.addEventListener("click", function() {
+                gameMode = "pc";
+                sandboxMode = false;
+                document.body.classList.remove("mobile-mode");
+                modePicker.style.display = "none";
+                init();
+            });
+        }
+
+        if (mobileModeBtn) {
+            mobileModeBtn.addEventListener("click", function() {
+                gameMode = "mobile";
+                modePicker.style.display = "none";
+                document.body.classList.add("mobile-mode");
+                init();
+                setupMobileControls();
+            });
+        }
+
+        const sandboxModeBtn = document.getElementById("sandbox-mode");
+
+        if (sandboxModeBtn) {
+            sandboxModeBtn.addEventListener("click", function() {
+                gameMode = "mobile";
+                sandboxMode = true;
+                document.body.classList.add("mobile-mode");
+                modePicker.style.display = "none";
+                document.getElementById("floor-label").textContent = "Piaskownica — płaska powierzchnia";
+                init();
+                setupMobileControls();
+            });
+        }
+
+        function setupMobileControls() {
+            const buttons = document.querySelectorAll(".mobile-button");
+            buttons.forEach(function(button) {
+                const action = button.getAttribute("data-action");
+                button.addEventListener("touchstart", function(e) {
+                    e.preventDefault();
+                    if (action === "forward") moveForward();
+                    if (action === "left") rotateLeft();
+                    if (action === "right") rotateRight();
+                });
+            });
+        }
+
+        const gameOverResetButton = document.getElementById("game-over-reset");
+        if (gameOverResetButton) {
+            gameOverResetButton.addEventListener("click", function(e) {
+                e.preventDefault();
+                resetToMenu();
+            });
+            gameOverResetButton.addEventListener("touchend", function(e) {
+                e.preventDefault();
+                resetToMenu();
+            }, { passive: false });
+            gameOverResetButton.addEventListener("pointerup", function(e) {
+                if (e.pointerType === "touch") return;
+                resetToMenu();
+            });
+        }
+
+        window.addEventListener("resize", function() {
+            if (camera && renderer) {
+                const newWidth = window.innerWidth;
+                const newHeight = window.innerHeight;
+                camera.aspect = newWidth / newHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(newWidth, newHeight);
+            }
+        });
+    </script>
+</body>
+</html>
